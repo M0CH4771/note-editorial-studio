@@ -52,7 +52,7 @@ function loadDrafts() {
 }
 
 function saveDrafts() {
-  localStorage.setItem(DRAFTS_KEY, JSON.stringify(state.drafts));
+  try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(state.drafts)); } catch { notify('端末の保存容量が不足しています'); }
 }
 
 async function syncDrafts() {
@@ -64,6 +64,7 @@ async function syncDrafts() {
   state.selected = state.drafts[0]?.id || null;
   saveDrafts();
   renderDrafts();
+  refreshFailures().catch(()=>notify('再作成の一覧を取得できませんでした'));
 }
 
 function renderIdeas() {
@@ -97,6 +98,7 @@ function updateBatchButton() {
 }
 
 function renderDrafts() {
+  renderLead();
   const root = $('#draftList');
   $('#draftCount').textContent = `${state.drafts.length}本`;
   $('#exportAllBtn').disabled = !state.drafts.length;
@@ -127,6 +129,19 @@ function renderEditor(d) {
     <details class="editor-section"><summary>公開前に確認すること</summary><div class="fact-list">${(d.factCheck || []).map(f => `<div class="fact-item"><b>${escapeHtml(f.status || '要確認')}</b>${escapeHtml(f.claim || '')}${f.note ? `<br>${escapeHtml(f.note)}` : ''}</div>`).join('') || '<div class="fact-item">確認項目なし</div>'}${(d.editorNotes || []).map(n => `<div class="fact-item">${escapeHtml(n)}</div>`).join('')}</div></details>
     <div class="editor-section"><label>SNS告知案</label><div class="fact-list">${(d.socialPosts || []).map(p => `<div class="fact-item">${escapeHtml(p)}</div>`).join('') || '<div class="fact-item">告知案なし</div>'}</div></div>
     <div class="editor-section"><label>公開前に確認</label><div class="fact-list">${(d.editorNotes || []).map(n => `<div class="fact-item">${escapeHtml(n)}</div>`).join('') || '<div class="fact-item">要確認事項なし</div>'}</div></div>`;
+  const publish = document.createElement('div');
+  publish.className='editor-section';
+  publish.innerHTML='<label>公開したnoteのURL<input type="url" placeholder="https://note.com/…/n/…" value="'+escapeAttr(d.noteUrl||'')+'"></label><button class="secondary-button">'+(d.noteUrl?'公開URLを更新':'公開した')+'</button>';
+  root.append(publish);
+  publish.querySelector('button').onclick=async()=>{
+    try{
+      const url=new URL(publish.querySelector('input').value.trim());
+      if(url.origin!=='https://note.com'||url.pathname.split('/').filter(Boolean).length!==3||url.pathname.split('/')[2]!=='n') throw new Error('公開したnote記事のURLを入力してください');
+      const edited={...d,title:$('#editTitle').value,dek:$('#editDek').value,freePart:$('#editFree').value,paidPart:$('#editPaid').value,status:'published',noteUrl:url.origin+url.pathname,publishedAt:d.publishedAt||new Date().toISOString()};
+      const {draft}=await api('/api/drafts',{method:'PUT',body:JSON.stringify(edited)});
+      Object.assign(d,draft); saveDrafts(); renderDrafts(); notify('公開済みに登録しました');
+    }catch(e){notify(e.message);}
+  };
   $('#saveBtn').addEventListener('click', saveSelected);
   $('#copyBtn').addEventListener('click', () => {
     const references = (d.sources || []).map(s => `- ${s.title || '参考ページ'}: ${s.url}`).join('\n');
@@ -232,3 +247,54 @@ document.querySelectorAll('.topic-chip').forEach(button => button.addEventListen
 
 loadDrafts();
 checkStatus();
+
+function renderLead(){
+  const latest=state.drafts.filter(d=>d.automated).map(d=>d.date).sort().at(-1);
+  const picks=state.drafts.filter(d=>d.automated&&d.date===latest).sort((a,b)=>(a.rank||99)-(b.rank||99));
+  const d=picks.find(x=>x.status==='published')||picks[0];
+  const box=$('#lead');
+  if(!d){box.textContent='自動作成した下書きが届くと、ここにおすすめの1本が出ます。';return;}
+  const link=d.evidence&&/^https?:\/\//i.test(d.evidence)?'<a target="_blank" rel="noreferrer" href="'+escapeAttr(d.evidence)+'">根拠を読む</a>':'根拠ページは要確認';
+  box.innerHTML='<small>'+escapeHtml(latest)+' 作成 · '+(d.status==='published'?'公開済み':'おすすめ')+'</small><h3>'+escapeHtml(d.title)+'</h3><p>'+escapeHtml(d.reason||d.dek)+'</p>'+link+' <button>下書きを開く</button>';
+  box.querySelector('button').onclick=()=>{state.selected=d.id;renderDrafts();$('#editor').scrollIntoView();};
+}
+async function refreshFailures(){
+  const {items}=await api('/api/failures');
+  const box=$('#failures');box.replaceChildren();
+  for(const item of items){
+    const btn=document.createElement('button');btn.textContent=item.title+' を再作成';box.append(btn);
+    btn.onclick=async()=>{btn.disabled=true;try{await api('/api/failures',{method:'POST',body:JSON.stringify({id:item.id})});btn.textContent='再作成を受付済み（後で再読み込み）';}catch(e){btn.disabled=false;notify(e.message);}};
+  }
+}
+const weekInput=$('#weekDay');
+weekInput.value=new Date(Date.now()+9*3600000-7*86400000).toISOString().slice(0,10);
+weekInput.onchange=()=>$('#weekRows').replaceChildren();
+$('#loadWeek').onclick=async()=>{
+  const day=weekInput.value;
+  const path='/api/weekly?day='+encodeURIComponent(day);
+  try{
+    const {rows}=await api(path);if(weekInput.value!==day)return;
+    const monday=new Date(day+'T00:00:00Z'); monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
+    const sunday=new Date(+monday+6*86400000).toISOString().slice(0,10);
+    const pubs=new Map(rows.map(r=>[r.id,r]));
+    for(const d of state.drafts.filter(d=>d.status==='published'&&(!d.publishedAt||new Date(Date.parse(d.publishedAt)+9*3600000).toISOString().slice(0,10)<=sunday))) if(!pubs.has(d.id))pubs.set(d.id,d);
+    const box=$('#weekRows');box.replaceChildren();
+    if(!pubs.size){box.textContent='この週に集計できる記事がありません。下書きに公開URLを登録してください。';return;}
+    const caption=document.createElement('p');caption.textContent=monday.toISOString().slice(0,10)+' 〜 '+sunday+' の期間分を入力（空欄は未集計）';box.append(caption);
+    const fields=[];
+    for(const r of pubs.values()){
+      const row=document.createElement('fieldset');const label=document.createElement('legend');label.textContent=r.title;row.append(label);
+      for(const [key,name] of [['views','ビュー'],['purchases','購入件数'],['revenue','売上（円）']]){
+        const el=document.createElement('label');el.textContent=name;const input=document.createElement('input');input.type='number';input.min='0';input.value=r[key]??'';el.append(input);row.append(el);
+      }box.append(row);fields.push([r,row]);
+    }
+    const save=document.createElement('button');save.textContent='この週の実績を保存';box.append(save);
+    save.onclick=async()=>{try{
+      const output=[];for(const [r,row] of fields){const v=[...row.querySelectorAll('input')].map(x=>x.value);
+        if(v.every(x=>x===''))continue;
+        if(v.some(x=>x===''||!Number.isSafeInteger(+x)||+x<0))throw new Error('集計する記事は3項目とも0以上の整数を入力してください');
+        output.push({id:r.id,title:r.title,views:+v[0],purchases:+v[1],revenue:+v[2]});
+      }await api(path,{method:'PUT',body:JSON.stringify(output)});notify('週の実績を保存しました');
+    }catch(e){notify(e.message);}};
+  }catch(e){notify(e.message);}
+};

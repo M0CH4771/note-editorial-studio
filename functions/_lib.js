@@ -100,7 +100,7 @@ function draftKey(draft) { return `draft:${draft.createdAt || new Date().toISOSt
 
 export async function saveDraft(env, draft) {
   if (!env.DRAFTS) throw new Error('下書き保存の設定がありません。');
-  await env.DRAFTS.put(draftKey(draft), JSON.stringify(draft));
+  await env.DRAFTS.put(draftKey(draft), JSON.stringify(draft), { metadata: { title: String(draft.title).slice(0,90), intent: String(draft.intent || '').slice(0,55), deliverable: String(draft.deliverable || '').slice(0,55) } });
   return draft;
 }
 
@@ -115,7 +115,11 @@ export async function listDrafts(request, env) {
       latestKeys = [...latestKeys, ...page.keys.map(key => key.name)].slice(-300);
       cursor = page.list_complete ? undefined : page.cursor;
     } while (cursor);
-    const drafts = (await Promise.all(latestKeys.map(key => env.DRAFTS.get(key, 'json')))).filter(Boolean);
+    const drafts = [];
+    for (let i = 0; i < latestKeys.length; i += 50) {
+      const group = await env.DRAFTS.get(latestKeys.slice(i, i+50), 'json');
+      drafts.push(...[...group.values()].filter(Boolean));
+    }
     drafts.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
     return json({ drafts });
   } catch (error) { return json({ error: '下書き一覧を読み込めませんでした。' }, 500); }
@@ -145,24 +149,47 @@ export async function removeDraft(request, env) {
 }
 
 export async function createDailyIdeas(env, dateKey) {
-  const queries = [
-    '生成AI 仕事 活用 最新 公式 日本',
-    'site:x.com 仕事 AI メール 資料作成 困った',
-    '仕事 生成AI 議事録 要約 失敗 質問 初心者',
-    'site:note.com AI 仕事 テンプレート 初心者 文例',
-  ];
+  const pilot = dateKey >= '2026-11-06' && dateKey <= '2026-11-19';
+  const focus = pilot ? '仕事で送りづらいメール（催促・断り・日程変更など）の完成文例' : '初心者の事務作業と実用文例';
+  const queries = [focus + ' 困った 質問', 'site:x.com ' + focus, 'site:note.com ' + focus, focus + ' 実例 注意点'];
+  const history = [];
+  let cursor;
+  do {
+    const page = await env.DRAFTS.list({prefix:'draft:',cursor});
+    history.push(...page.keys.map(k => k.metadata || {legacyKey:k.name}));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  const recent = history.slice(-300);
+  const legacy = recent.filter(x => x.legacyKey);
+  for(let i=0;i<legacy.length;i+=50){
+    const values=await env.DRAFTS.get(legacy.slice(i,i+50).map(x=>x.legacyKey),'json');
+    for(const entry of legacy.slice(i,i+50)) entry.title=values.get(entry.legacyKey)?.title;
+  }
+  const weekPage = await env.DRAFTS.list({prefix:'week:'});
+  const lastWeek = weekPage.keys.filter(k=>k.name.slice(5)<weekStart(dateKey)).at(-1);
+  const sales = lastWeek ? await env.DRAFTS.get(lastWeek.name,'json') : [];
   const groups = await Promise.all(queries.map(async query => ({ query, results: await searchWeb(query, env) })));
   const results = groups.flatMap(group => group.results.map(item => ({ ...item, query: group.query })));
   const text = await generate(`${pitchBrief}\n今日公開準備する記事企画を10件作ります。
 日付: ${dateKey}
+今回の軸: ${focus}
+直近の下書き（同じ悩みと同じ成果物の組合せを除外）: ${JSON.stringify(recent.map(({title,intent,deliverable})=>[title,intent,deliverable]))}
+直近の入力済み完了週の記事別実績: ${JSON.stringify(sales)}。購入があれば別場面に応用し、閲覧が少なければタイトル、閲覧があり購入ゼロなら有料内容の伝え方など一か所を変える企画を含める。未入力は未知。
+各案に実在する検索結果のURLをevidenceUrlとして付ける。需要の裏付け、成果物の具体性、過去記事との差で比較し、強い順に並べ、reasonに採用理由を書く。
 想定読者: 生成AIで日々の事務作業を短くしたい日本の初心者
 調査結果: ${JSON.stringify(results)}
 
 各案は検索結果で裏付けられる具体的な疑問に答えてください。似た案を避け、10件の切り口を分散させてください。検索結果にない需要や販売実績は推測と明記し、検索量・売上数字を作らないでください。体験談や実績は捏造しないでください。価格100円で読者が得られる具体的な手順、比較表、チェックリストなどを設定してください。
-JSONだけ: {"ideas":[{"title":"タイトル案","cluster":"分類","intent":"読者の疑問","hook":"読む理由","deliverable":"100円で渡す具体物","score":0,"confidence":"高/中/低"}]}`, env);
-  const ideas = (parseJson(text).ideas || []).slice(0, 10);
+JSONだけ: {"ideas":[{"evidenceUrl":"検索結果内のURL","reason":"根拠・具体物・過去との差","title":"タイトル案","cluster":"分類","intent":"読者の疑問","hook":"読む理由","deliverable":"100円で渡す具体物","score":0,"confidence":"高/中/低"}]}`, env);
+  const norm = x => String(x||'').normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
+  const seen = new Set(recent.flatMap(x=>[norm(x.title),norm(x.intent)+'|'+norm(x.deliverable)]));
+  const ideas = (parseJson(text).ideas || []).filter(x=>{
+    const keys=[norm(x.title),norm(x.intent)+'|'+norm(x.deliverable)];
+    if (!x.title || keys.some(k=>seen.has(k))) return false;
+    keys.forEach(k=>seen.add(k)); return true;
+  }).slice(0,10);
   if (ideas.length < 10) throw new Error('今日の企画を10件そろえられませんでした。');
-  return ideas.map((idea, index) => ({ ...idea, id: `auto-${dateKey}-${index + 1}`, index: index + 1, date: dateKey, createdAt: new Date().toISOString(), sources: results.slice((index * 2) % results.length, (index * 2) % results.length + 3).map(({ title, url, checked, content, query }) => ({ title, url, checked, supports: content.slice(0, 260), query })) }));
+  return ideas.map((idea, index) => ({ ...idea, id: `auto-${dateKey}-${index + 1}`, index: index + 1, date: dateKey, createdAt: new Date().toISOString(), sources: results.filter(r=>r.url===idea.evidenceUrl).slice(0,1).map(({ title, url, checked, content, query }) => ({ title, url, checked, supports: content.slice(0, 260), query })) }));
 }
 
 export async function createScheduledDraft(idea, env, dateKey) {
@@ -225,4 +252,20 @@ export async function createDraft(request, env) {
     const sources = (cited.length ? cited : results.slice(0, 5)).map(s => ({ title: s.title, url: s.url, checked: s.checked, supports: s.content.slice(0, 350) }));
     const savedDraft = { id: crypto.randomUUID(), ideaId: idea.id || null, title: draft.title || idea.title, dek: draft.dek || '', category: draft.category || idea.cluster || '', price, freePart: draft.free_part || '', paidPart: draft.paid_part || '', sources, factCheck: draft.fact_check || [], socialPosts: draft.social_posts || [], editorNotes: draft.editor_notes || [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'draft' }; await saveDraft(env, savedDraft); return json(savedDraft);
   } catch (error) { return json({ error: error.message || '下書きの作成に失敗しました。' }, error.status || 500); }
+}
+
+export function weekStart(day) {
+  const d = new Date(day+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
+  return d.toISOString().slice(0,10);
+}
+export async function weekly(request,env) {
+  const blocked=authorize(request,env); if(blocked) return blocked;
+  const day=new URL(request.url).searchParams.get('day');
+  if(!/^\d{4}-\d\d-\d\d$/.test(day)||!Number.isFinite(Date.parse(day))) return reply({error:'日付を選んでください'},400);
+  const key='week:'+weekStart(day);
+  if(request.method==='GET') return reply({rows:await env.DRAFTS.get(key,'json')||[]});
+  const rows=await request.json();
+  if(!Array.isArray(rows)||rows.length>500||rows.some(r=>typeof r.id!=='string'||typeof r.title!=='string'||[r.views,r.purchases,r.revenue].some(n=>!Number.isSafeInteger(n)||n<0))) return reply({error:'週の実績を整数で入力してください'},400);
+  await env.DRAFTS.put(key,JSON.stringify(rows)); return reply({ok:true});
 }
