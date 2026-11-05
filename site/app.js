@@ -32,6 +32,7 @@ async function checkStatus() {
   try {
     const s = await api('/api/status');
     if (!s.ready) throw new Error('CloudflareのAPIキー設定を確認してください。');
+    await syncDrafts();
     connection.classList.toggle('ok', s.ready);
     connection.lastElementChild?.remove();
     connection.innerHTML = `<i></i>${s.ready ? '接続済み' : '設定を確認してください'}`;
@@ -52,6 +53,17 @@ function loadDrafts() {
 
 function saveDrafts() {
   localStorage.setItem(DRAFTS_KEY, JSON.stringify(state.drafts));
+}
+
+async function syncDrafts() {
+  const data = await api('/api/drafts');
+  const remote = data.drafts || [];
+  const remoteIds = new Set(remote.map(d => d.id));
+  state.drafts = [...remote, ...state.drafts.filter(d => !remoteIds.has(d.id))];
+  state.drafts.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  state.selected = state.drafts[0]?.id || null;
+  saveDrafts();
+  renderDrafts();
 }
 
 function renderIdeas() {
@@ -167,11 +179,15 @@ async function createBatch() {
 async function saveSelected() {
   const d = state.drafts.find(x => x.id === state.selected); if (!d) return;
   Object.assign(d, { title: $('#editTitle').value, dek: $('#editDek').value, freePart: $('#editFree').value, paidPart: $('#editPaid').value, updatedAt: new Date().toISOString() });
-  saveDrafts(); renderDrafts(); notify('このブラウザに保存しました');
+  saveDrafts(); renderDrafts();
+  try { await api('/api/drafts', { method: 'PUT', body: JSON.stringify(d) }); notify('下書きを保存しました'); }
+  catch { notify('このブラウザには保存しました。サーバー同期はできませんでした'); }
 }
 
 async function deleteSelected() {
   const d = state.drafts.find(x => x.id === state.selected); if (!d || !confirm(`「${d.title}」を削除しますか？`)) return;
+  try { await api('/api/drafts?id=' + encodeURIComponent(d.id), { method: 'DELETE' }); }
+  catch { notify('削除をサーバーに反映できませんでした'); return; }
   state.drafts = state.drafts.filter(x => x.id !== d.id); state.selected = state.drafts[0]?.id || null; saveDrafts(); renderDrafts(); notify('下書きを削除しました');
 }
 
