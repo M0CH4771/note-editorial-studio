@@ -8,11 +8,11 @@
 
 ## 初回設定
 
-このリポジトリをCloudflare Pagesへ接続します。
+このリポジトリをCloudflare Workersへ接続します。Workerが画面とAPIを一緒に配信します。
 
-1. Cloudflareのダッシュボードで **Workers & Pages → Create → Pages → Connect to Git** を選び、GitHubの `M0CH4771/note-editorial-studio` を接続します。
-2. Framework presetは **None**、Build commandは空欄、Build output directoryは `.` にしてデプロイします。
-3. プロジェクトの **Settings → Variables and Secrets** を開き、Production環境に次の3項目をSecretとして登録します。
+1. Cloudflareの **Workers & Pages → note-editorial-studio → Settings → Builds** で、GitHubの `M0CH4771/note-editorial-studio` と `main` ブランチが接続されていることを確認します。
+2. Build commandは `None`、Deploy commandは `npx wrangler deploy`、Root directoryは `/` にします。リポジトリの `wrangler.jsonc` がWorkerの入口と画面ファイルの場所を指定します。
+3. プロジェクトの **Settings → Variables and Secrets** を開き、次の3項目をSecretとして登録します。
 
 | 名前 | 値 |
 | --- | --- |
@@ -20,7 +20,7 @@
 | `TAVILY_API_KEY` | Tavilyで発行した検索APIキー |
 | `APP_PASSWORD` | 自分で決めた、十分に長い接続パスワード |
 
-4. 保存後に再デプロイします。発行されたPagesのURLを開き、`APP_PASSWORD` に設定したパスワードを入力します。
+4. 保存後に再デプロイします。発行された `workers.dev` のURLを開き、`APP_PASSWORD` に設定したパスワードを入力します。
 
 APIキーはGitHubのファイルには入れず、CloudflareのSecretとしてのみ保管します。リポジトリは公開でも、接続パスワードがないと記事生成APIを使えません。接続パスワードは信頼できる人以外に共有しないでください。
 
@@ -34,6 +34,7 @@ APIキーはGitHubのファイルには入れず、CloudflareのSecretとして�
 
 ## ファイル構成
 
-- `index.html`, `app.js`, `styles.css`: ブラウザに表示する画面
+- `site/`: ブラウザに表示する画面
+- `worker.js`, `wrangler.jsonc`: Cloudflare Workerと静的ファイルの配信設定
 - `functions/api/`: GeminiとTavilyを呼び出すサーバー側処理
 - `functions/_lib.js`: APIキー確認、検索、記事案・下書き生成
