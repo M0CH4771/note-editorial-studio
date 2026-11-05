@@ -83,6 +83,98 @@ async function researchSources(topic, env, maxQueries) {
   return { queries, results };
 }
 
+
+
+const DRAFT_INDEX_KEY = 'draft-index-v1';
+
+export async function saveDraft(env, draft) {
+  if (!env.DRAFTS) throw new Error('下書き保存の設定がありません。');
+  const key = `draft:${draft.id}`;
+  const index = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
+  await env.DRAFTS.put(key, JSON.stringify(draft));
+  const next = [draft.id, ...index.filter(id => id !== draft.id)].slice(0, 300);
+  await env.DRAFTS.put(DRAFT_INDEX_KEY, JSON.stringify(next));
+  return draft;
+}
+
+export async function listDrafts(request, env) {
+  const blocked = authorize(request, env); if (blocked) return blocked;
+  if (!env.DRAFTS) return json({ drafts: [] });
+  try {
+    const ids = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
+    const drafts = (await Promise.all(ids.slice(0, 300).map(id => env.DRAFTS.get(`draft:${id}`, 'json')))).filter(Boolean);
+    return json({ drafts });
+  } catch (error) { return json({ error: '下書き一覧を読み込めませんでした。' }, 500); }
+}
+
+export async function updateDraft(request, env) {
+  const blocked = authorize(request, env); if (blocked) return blocked;
+  try {
+    const draft = await request.json();
+    if (!draft?.id || !draft?.title) return json({ error: '下書きの内容を確認してください。' }, 400);
+    draft.updatedAt = new Date().toISOString();
+    await saveDraft(env, draft);
+    return json({ draft });
+  } catch (error) { return json({ error: error.message || '下書きを保存できませんでした。' }, 500); }
+}
+
+export async function removeDraft(request, env) {
+  const blocked = authorize(request, env); if (blocked) return blocked;
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id) return json({ error: '下書きIDがありません。' }, 400);
+    await env.DRAFTS.delete(`draft:${id}`);
+    const index = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
+    await env.DRAFTS.put(DRAFT_INDEX_KEY, JSON.stringify(index.filter(item => item !== id)));
+    return json({ ok: true });
+  } catch (error) { return json({ error: '下書きを削除できませんでした。' }, 500); }
+}
+
+export async function createDailyIdeas(env, dateKey) {
+  const queries = [
+    '生成AI 仕事 活用 最新 公式 日本',
+    '副業 在宅ワーク 2026 調査 日本',
+    'SNS 集客 アルゴリズム 最新 公式 日本',
+    '節約 家計 2026 最新 制度 日本',
+  ];
+  const groups = await Promise.all(queries.map(async query => ({ query, results: await searchWeb(query, env) })));
+  const results = groups.flatMap(group => group.results.map(item => ({ ...item, query: group.query })));
+  const text = await generate(`あなたは日本語メディアのリサーチ編集者です。今日公開準備する記事企画を10件作ります。
+日付: ${dateKey}
+想定読者: 副業、仕事効率化、SNS活用、家計改善に関心がある日本の一般読者
+調査結果: ${JSON.stringify(results)}
+
+各案は検索結果で裏付けられる具体的な疑問に答えてください。似た案を避け、10件の切り口を分散させてください。検索結果にない需要や販売実績は推測と明記し、検索量・売上数字を作らないでください。体験談や実績は捏造しないでください。価格100円で読者が得られる具体的な手順、比較表、チェックリストなどを設定してください。
+JSONだけ: {"ideas":[{"title":"タイトル案","cluster":"分類","intent":"読者の疑問","hook":"読む理由","deliverable":"100円で渡す具体物","score":0,"confidence":"高/中/低"}]}`, env);
+  const ideas = (parseJson(text).ideas || []).slice(0, 10);
+  if (ideas.length < 10) throw new Error('今日の企画を10件そろえられませんでした。');
+  return ideas.map((idea, index) => ({ ...idea, id: `auto-${dateKey}-${index + 1}`, index: index + 1, date: dateKey, createdAt: new Date().toISOString(), sources: results.slice((index * 2) % results.length, (index * 2) % results.length + 3).map(({ title, url, checked, content, query }) => ({ title, url, checked, supports: content.slice(0, 260), query })) }));
+}
+
+export async function createScheduledDraft(idea, env, dateKey) {
+  const query = `${idea.title} 最新 公式 情報`;
+  const results = await searchWeb(query, env);
+  const text = await generate(`あなたはリサーチ重視の日本語編集者です。noteに公開する前の100円記事の下書きを作ってください。
+企画: ${JSON.stringify(idea)}
+日付: ${dateKey}
+検索結果: ${JSON.stringify(results)}
+
+必須: 検索結果で確認できる事実だけを出典と結びつける。体験談、取材、売上、成果、資格を捏造しない。事実・解釈・予測を分け、数字や仕様には確認日を示す。不明点や根拠が弱い点は「要確認」とする。無料部分に対象読者と得られるもの、有料部分に再現可能な手順・表・チェックリストなど具体的な価値を置く。参考URLは検索結果内のものだけ。
+JSONだけ: {"title":"タイトル","dek":"説明文","category":"カテゴリ","free_part":"無料部分Markdown","paid_part":"有料部分Markdown","source_urls":[],"fact_check":[{"claim":"主張","status":"確認済/要確認","note":"確認メモ"}],"social_posts":["SNS告知案"],"editor_notes":["公開前確認事項"]}`, env);
+  const draft = parseJson(text);
+  const sourceMap = new Map(results.map(item => [item.url, item]));
+  const cited = [...new Set(draft.source_urls || [])].map(url => sourceMap.get(url)).filter(Boolean);
+  const sources = (cited.length ? cited : results.slice(0, 5)).map(s => ({ title: s.title, url: s.url, checked: s.checked, supports: s.content.slice(0, 350) }));
+  return {
+    id: idea.id, ideaId: idea.id, title: draft.title || idea.title, dek: draft.dek || '',
+    category: draft.category || idea.cluster || '', price: 100,
+    freePart: draft.free_part || '', paidPart: draft.paid_part || '',
+    sources, factCheck: draft.fact_check || [], socialPosts: draft.social_posts || [],
+    editorNotes: draft.editor_notes || [], createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(), status: 'draft', automated: true, date: dateKey,
+  };
+}
+
 export async function getStatus(request, env) {
   const blocked = authorize(request, env); if (blocked) return blocked;
   return json({ ready: true, model: env.GEMINI_MODEL || 'gemini-3.8-flash' });
@@ -117,6 +209,6 @@ export async function createDraft(request, env) {
     const sourceMap = new Map(results.map(item => [item.url, item]));
     const cited = [...new Set(draft.source_urls || [])].map(url => sourceMap.get(url)).filter(Boolean);
     const sources = (cited.length ? cited : results.slice(0, 5)).map(s => ({ title: s.title, url: s.url, checked: s.checked, supports: s.content.slice(0, 350) }));
-    return json({ id: crypto.randomUUID(), ideaId: idea.id || null, title: draft.title || idea.title, dek: draft.dek || '', category: draft.category || idea.cluster || '', price, freePart: draft.free_part || '', paidPart: draft.paid_part || '', sources, factCheck: draft.fact_check || [], socialPosts: draft.social_posts || [], editorNotes: draft.editor_notes || [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'draft' });
+    const savedDraft = { id: crypto.randomUUID(), ideaId: idea.id || null, title: draft.title || idea.title, dek: draft.dek || '', category: draft.category || idea.cluster || '', price, freePart: draft.free_part || '', paidPart: draft.paid_part || '', sources, factCheck: draft.fact_check || [], socialPosts: draft.social_posts || [], editorNotes: draft.editor_notes || [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'draft' }; await saveDraft(env, savedDraft); return json(savedDraft);
   } catch (error) { return json({ error: error.message || '下書きの作成に失敗しました。' }, error.status || 500); }
 }
