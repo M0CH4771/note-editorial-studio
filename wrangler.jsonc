@@ -4,6 +4,9 @@
   "main": "worker.js",
   "compatibility_date": "2026-11-05",
   "workers_dev": true,
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
   "assets": {
     "directory": "./site/",
     "binding": "ASSETS",
@@ -20,8 +23,7 @@
     {
       "name": "note-editorial-studio-daily-drafts",
       "binding": "DAILY_DRAFTS",
-      "class_name": "DailyDraftWorkflow",
-      "schedules": ["0 0 * * *"]
+      "class_name": "DailyDraftWorkflow"
     }
   ]
 }
