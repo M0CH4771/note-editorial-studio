@@ -6,7 +6,7 @@ import {
 
 export class DailyDraftWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
-    const dateKey = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const dateKey = event.payload?.dateKey || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const ideas = await step.do('find-10-article-ideas', () => createDailyIdeas(this.env, dateKey));
     let completed = 0;
 
@@ -23,6 +23,10 @@ export class DailyDraftWorkflow extends WorkflowEntrypoint {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    const dateKey = new Date(controller.scheduledTime + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    ctx.waitUntil(env.DAILY_DRAFTS.create({ id: `daily-${dateKey}`, params: { dateKey } }));
+  },
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     if (pathname === '/api/status' && request.method === 'GET') return getStatus(request, env);
