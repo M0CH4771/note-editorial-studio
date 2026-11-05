@@ -186,7 +186,7 @@ async function saveSelected() {
 
 async function deleteSelected() {
   const d = state.drafts.find(x => x.id === state.selected); if (!d || !confirm(`「${d.title}」を削除しますか？`)) return;
-  try { await api('/api/drafts?id=' + encodeURIComponent(d.id), { method: 'DELETE' }); }
+  try { await api('/api/drafts?id=' + encodeURIComponent(d.id) + '&createdAt=' + encodeURIComponent(d.createdAt), { method: 'DELETE' }); }
   catch { notify('削除をサーバーに反映できませんでした'); return; }
   state.drafts = state.drafts.filter(x => x.id !== d.id); state.selected = state.drafts[0]?.id || null; saveDrafts(); renderDrafts(); notify('下書きを削除しました');
 }
