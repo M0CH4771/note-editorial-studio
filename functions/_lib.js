@@ -85,15 +85,11 @@ async function researchSources(topic, env, maxQueries) {
 
 
 
-const DRAFT_INDEX_KEY = 'draft-index-v1';
+function draftKey(draft) { return `draft:${draft.createdAt || new Date().toISOString()}:${draft.id}`; }
 
 export async function saveDraft(env, draft) {
   if (!env.DRAFTS) throw new Error('下書き保存の設定がありません。');
-  const key = `draft:${draft.id}`;
-  const index = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
-  await env.DRAFTS.put(key, JSON.stringify(draft));
-  const next = [draft.id, ...index.filter(id => id !== draft.id)].slice(0, 300);
-  await env.DRAFTS.put(DRAFT_INDEX_KEY, JSON.stringify(next));
+  await env.DRAFTS.put(draftKey(draft), JSON.stringify(draft));
   return draft;
 }
 
@@ -101,8 +97,15 @@ export async function listDrafts(request, env) {
   const blocked = authorize(request, env); if (blocked) return blocked;
   if (!env.DRAFTS) return json({ drafts: [] });
   try {
-    const ids = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
-    const drafts = (await Promise.all(ids.slice(0, 300).map(id => env.DRAFTS.get(`draft:${id}`, 'json')))).filter(Boolean);
+    let cursor;
+    let latestKeys = [];
+    do {
+      const page = await env.DRAFTS.list({ prefix: 'draft:', limit: 1000, cursor });
+      latestKeys = [...latestKeys, ...page.keys.map(key => key.name)].slice(-300);
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    const drafts = (await Promise.all(latestKeys.map(key => env.DRAFTS.get(key, 'json')))).filter(Boolean);
+    drafts.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
     return json({ drafts });
   } catch (error) { return json({ error: '下書き一覧を読み込めませんでした。' }, 500); }
 }
@@ -111,7 +114,7 @@ export async function updateDraft(request, env) {
   const blocked = authorize(request, env); if (blocked) return blocked;
   try {
     const draft = await request.json();
-    if (!draft?.id || !draft?.title) return json({ error: '下書きの内容を確認してください。' }, 400);
+    if (!draft?.id || !draft?.title || !draft?.createdAt) return json({ error: '下書きの内容を確認してください。' }, 400);
     draft.updatedAt = new Date().toISOString();
     await saveDraft(env, draft);
     return json({ draft });
@@ -121,11 +124,11 @@ export async function updateDraft(request, env) {
 export async function removeDraft(request, env) {
   const blocked = authorize(request, env); if (blocked) return blocked;
   try {
-    const id = new URL(request.url).searchParams.get('id');
-    if (!id) return json({ error: '下書きIDがありません。' }, 400);
-    await env.DRAFTS.delete(`draft:${id}`);
-    const index = await env.DRAFTS.get(DRAFT_INDEX_KEY, 'json') || [];
-    await env.DRAFTS.put(DRAFT_INDEX_KEY, JSON.stringify(index.filter(item => item !== id)));
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    const createdAt = url.searchParams.get('createdAt');
+    if (!id || !createdAt) return json({ error: '下書き情報がありません。' }, 400);
+    await env.DRAFTS.delete(`draft:${createdAt}:${id}`);
     return json({ ok: true });
   } catch (error) { return json({ error: '下書きを削除できませんでした。' }, 500); }
 }
