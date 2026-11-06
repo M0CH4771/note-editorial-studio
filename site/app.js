@@ -190,14 +190,15 @@ function renderEditor(d) {
   const cover = document.createElement('section');
   cover.className = 'editor-section cover-editor';
   cover.innerHTML = `
-    <div class="cover-heading"><div><label>note用の見出し画像</label><p id="coverInfo" class="microcopy">${d.coverImageGeneratedAt ? '画像を読み込み中…' : d.coverError ? escapeHtml(d.coverError) : '記事の内容に合わせた横長画像を自動生成します。'}</p></div><button id="generateCoverBtn" class="secondary-button">${d.coverImageGeneratedAt ? '画像を作り直す' : '画像を生成'}</button></div>
+    <div class="cover-heading"><div><label>note用の見出し画像</label><p id="coverInfo" class="microcopy">${d.coverImageGeneratedAt ? '画像を読み込み中…' : d.coverError ? escapeHtml(d.coverError) : '記事タイトルとテーマから画像を作成します。'}</p></div><button id="generateCoverBtn" class="secondary-button">${d.coverImageGeneratedAt ? '画像を作り直す' : '画像を作成'}</button></div>
     <img id="coverPreview" class="cover-preview" alt="${escapeAttr(d.title)}の記事用見出し画像" hidden>
-    <a id="downloadCoverBtn" class="secondary-button cover-download" hidden>画像を保存</a>
-    <p class="cover-cost-note">画像生成にはGemini APIを使います。作り直すたびにAPI利用料が発生する場合があります。</p>`;
+    <a id="downloadCoverBtn" class="secondary-button cover-download" hidden>PNG画像を保存</a>
+    <p class="cover-cost-note">画像はサイト内のテンプレートで作成します。画像生成AIのAPI利用料はかかりません。</p>`;
   root.append(cover);
   const coverPreview = cover.querySelector('#coverPreview');
   const coverInfo = cover.querySelector('#coverInfo');
   const downloadCover = cover.querySelector('#downloadCoverBtn');
+  let coverFilename = 'note-cover.png';
   async function loadCover() {
     if (!d.coverImageGeneratedAt) return;
     try {
@@ -210,10 +211,36 @@ function renderEditor(d) {
       state.coverUrls.set(d.id, objectUrl);
       coverPreview.src = objectUrl;
       coverPreview.hidden = false;
+      coverFilename = ((d.title || 'note-cover').replace(/[\\/:*?"<>|]/g, '_').slice(0,60) || 'note-cover') + '-cover.png';
       downloadCover.href = objectUrl;
-      downloadCover.download = ((d.title || 'note-cover').replace(/[\\/:*?"<>|]/g, '_').slice(0,60) || 'note-cover') + '-cover.jpg';
+      downloadCover.download = coverFilename;
+      downloadCover.onclick = event => {
+        event.preventDefault();
+        const image = new Image();
+        image.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 1280;
+          canvas.height = 670;
+          const context = canvas.getContext('2d');
+          if (!context) { coverInfo.textContent = 'PNG画像を作成できませんでした。'; return; }
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(png => {
+            if (!png) { coverInfo.textContent = 'PNG画像を保存できませんでした。'; return; }
+            const pngUrl = URL.createObjectURL(png);
+            const link = document.createElement('a');
+            link.href = pngUrl;
+            link.download = coverFilename;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+          }, 'image/png');
+        };
+        image.onerror = () => { coverInfo.textContent = '画像をPNGに変換できませんでした。'; };
+        image.src = objectUrl;
+      };
       downloadCover.hidden = false;
-      coverInfo.textContent = '画像を生成しました。保存してnoteの見出し画像に設定できます。';
+      coverInfo.textContent = '画像ができました。PNGで保存してnoteの見出し画像に設定できます。';
     } catch (error) { coverInfo.textContent = error.message; }
   }
   if (d.coverImageGeneratedAt) loadCover();
@@ -221,9 +248,9 @@ function renderEditor(d) {
     const button = event.currentTarget;
     button.disabled = true;
     button.textContent = '画像を作成中…';
-    coverInfo.textContent = '記事内容に合わせて画像を生成しています。少し時間がかかります。';
+    coverInfo.textContent = '記事に合わせた見出し画像を作成しています。';
     try {
-      const result = await api('/api/cover', { method: 'POST', timeoutMs: 240000, body: JSON.stringify({ draftId: d.id, createdAt: d.createdAt }) });
+      const result = await api('/api/cover', { method: 'POST', timeoutMs: 60000, body: JSON.stringify({ draftId: d.id, createdAt: d.createdAt }) });
       Object.assign(d, result.draft);
       saveDrafts();
       notify('記事用の見出し画像を作成しました');
@@ -231,7 +258,7 @@ function renderEditor(d) {
     } catch (error) {
       coverInfo.textContent = error.message;
       button.disabled = false;
-      button.textContent = 'もう一度生成';
+      button.textContent = 'もう一度作成';
     }
   };
   const publish = document.createElement('div');
