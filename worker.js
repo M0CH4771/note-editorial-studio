@@ -58,6 +58,7 @@ export class DailyDraftWorkflow extends WorkflowEntrypoint {
         await step.do('record-'+idea.id,()=>this.env.DRAFTS.put('fail:'+idea.id,JSON.stringify({id:idea.id,title:idea.title,dateKey,idea}),{metadata:{title:idea.title.slice(0,90)}}).then(()=>true));
       }
     }
+    if (retry?.id) await this.env.DRAFTS.delete('retry:' + retry.id);
     return { date: dateKey, created: completed };
   }
 }
@@ -78,12 +79,16 @@ export default {
       }
       if(request.method==='POST'){
         const {id}=await request.json();
+        if(typeof id!=='string'||!id||id.length>200) return reply({error:'再作成する項目を確認してください'},400);
         const failure=await env.DRAFTS.get('fail:'+id,'json');
         if(!failure) return reply({error:'すでに処理済みです'},404);
-        const runId='retry-'+id+'-'+Math.floor(Date.now()/60000);
+        const retryKey='retry:'+id;
+        if(await env.DRAFTS.get(retryKey)) return reply({ok:true,alreadyRunning:true},202);
+        const runId='retry-'+crypto.randomUUID();
+        await env.DRAFTS.put(retryKey,runId,{expirationTtl:900});
         try { await env.DAILY_DRAFTS.create({id:runId,params:{dateKey:failure.dateKey,failure}}); }
-        catch(e){if(!/already exists/i.test(String(e))) throw e;}
-        return reply({ok:true},202);
+        catch(e){await env.DRAFTS.delete(retryKey);return reply({error:e.message||'再作成を開始できませんでした'},500);}
+        return reply({ok:true,alreadyRunning:false},202);
       }
     }
     if (pathname === '/api/draft-jobs') {
