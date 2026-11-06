@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { ideas: [], drafts: [], selected: null, busy: false, retryingFailures: new Set(), draftFilter: 'all' };
+const state = { ideas: [], drafts: [], selected: null, busy: false, retryingFailures: new Set(), draftFilter: 'all', coverUrls: new Map() };
 const connection = $('#connection');
 const toast = $('#toast');
 const DRAFTS_KEY = 'note-editorial-studio-drafts-v1';
@@ -187,6 +187,53 @@ function renderEditor(d) {
     <div class="editor-section"><label>Threads投稿案（7本）</label><div class="fact-list">${(d.socialPosts || []).slice(0, 7).map(p => `<div class="fact-item">${escapeHtml(p)}</div>`).join('') || '<div class="fact-item">Threads投稿案なし</div>'}</div></div>
     <details class="editor-section" open><summary>夜中に読む人の目線で見直した点</summary><div class="fact-list">${(d.nightReview || []).map(n => `<div class="fact-item">${escapeHtml(n)}</div>`).join('') || '<div class="fact-item">夜に一人で読む場面を想定し、押しつけや決めつけがないか確認しています。</div>'}</div></details>
     <div class="editor-section"><label>公開前に確認</label><div class="fact-list">${(d.editorNotes || []).map(n => `<div class="fact-item">${escapeHtml(n)}</div>`).join('') || '<div class="fact-item">要確認事項なし</div>'}</div></div>`;
+  const cover = document.createElement('section');
+  cover.className = 'editor-section cover-editor';
+  cover.innerHTML = `
+    <div class="cover-heading"><div><label>note用の見出し画像</label><p id="coverInfo" class="microcopy">${d.coverImageGeneratedAt ? '画像を読み込み中…' : d.coverError ? escapeHtml(d.coverError) : '記事の内容に合わせた横長画像を自動生成します。'}</p></div><button id="generateCoverBtn" class="secondary-button">${d.coverImageGeneratedAt ? '画像を作り直す' : '画像を生成'}</button></div>
+    <img id="coverPreview" class="cover-preview" alt="${escapeAttr(d.title)}の記事用見出し画像" hidden>
+    <a id="downloadCoverBtn" class="secondary-button cover-download" hidden>画像を保存</a>
+    <p class="cover-cost-note">画像生成にはGemini APIを使います。作り直すたびにAPI利用料が発生する場合があります。</p>`;
+  root.append(cover);
+  const coverPreview = cover.querySelector('#coverPreview');
+  const coverInfo = cover.querySelector('#coverInfo');
+  const downloadCover = cover.querySelector('#downloadCoverBtn');
+  async function loadCover() {
+    if (!d.coverImageGeneratedAt) return;
+    try {
+      const password = localStorage.getItem(PASSWORD_KEY) || '';
+      const response = await fetch('/api/cover?draftId=' + encodeURIComponent(d.id) + '&createdAt=' + encodeURIComponent(d.createdAt), { headers: password ? { Authorization: `Bearer ${password}` } : {} });
+      if (!response.ok) throw new Error('画像を読み込めませんでした');
+      const blob = await response.blob();
+      if (state.coverUrls.has(d.id)) URL.revokeObjectURL(state.coverUrls.get(d.id));
+      const objectUrl = URL.createObjectURL(blob);
+      state.coverUrls.set(d.id, objectUrl);
+      coverPreview.src = objectUrl;
+      coverPreview.hidden = false;
+      downloadCover.href = objectUrl;
+      downloadCover.download = ((d.title || 'note-cover').replace(/[\\/:*?"<>|]/g, '_').slice(0,60) || 'note-cover') + '-cover.jpg';
+      downloadCover.hidden = false;
+      coverInfo.textContent = '画像を生成しました。保存してnoteの見出し画像に設定できます。';
+    } catch (error) { coverInfo.textContent = error.message; }
+  }
+  if (d.coverImageGeneratedAt) loadCover();
+  cover.querySelector('#generateCoverBtn').onclick = async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = '画像を作成中…';
+    coverInfo.textContent = '記事内容に合わせて画像を生成しています。少し時間がかかります。';
+    try {
+      const result = await api('/api/cover', { method: 'POST', timeoutMs: 240000, body: JSON.stringify({ draftId: d.id, createdAt: d.createdAt }) });
+      Object.assign(d, result.draft);
+      saveDrafts();
+      notify('記事用の見出し画像を作成しました');
+      renderDrafts();
+    } catch (error) {
+      coverInfo.textContent = error.message;
+      button.disabled = false;
+      button.textContent = 'もう一度生成';
+    }
+  };
   const publish = document.createElement('div');
   publish.className='editor-section';
   publish.innerHTML='<label>公開したnoteのURL<input type="url" placeholder="https://note.com/…/n/…" value="'+escapeAttr(d.noteUrl||'')+'"></label><button class="secondary-button">'+(d.noteUrl?'公開URLを更新':'公開した')+'</button>';
