@@ -36,7 +36,7 @@ async function callGemini(prompt, apiKey, model) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 16384 } }),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -149,11 +149,25 @@ export async function removeDraft(request, env) {
 }
 
 async function ensurePaidVolume(draft, idea, env) {
-  if (Array.from(String(draft.paid_part || '')).length >= 1300) return draft;
-  const expanded = await generate(`有料記事の本文を実用的に拡充してください。下書き: ${JSON.stringify(draft)}\n企画: ${JSON.stringify(idea)}\n本文は日本語1,500字以上。無料部分を繰り返さず、約束した完成物、手順、条件違いの例2つ、使い分けや失敗時の修正、チェックリストを具体化します。根拠のない事実を追加せず、架空条件は例と明記。JSONのみ: {"paid_part":"拡充した有料本文Markdown"}`,env);
-  const result = parseJson(expanded);
-  if (Array.from(String(result.paid_part || '')).length < 1300) throw new Error('有料部分を十分な分量で作れませんでした。再作成してください。');
-  draft.paid_part = result.paid_part;
+  const minimum = 5000;
+  const maximum = 10000;
+  let paidPart = String(draft.paid_part || '');
+
+  for (let attempt = 0; paidPart.length < minimum && attempt < 2; attempt++) {
+    const expanded = await generate(`有料記事の本文を拡充してください。企画: ${JSON.stringify(idea)}
+現在の有料本文: ${paidPart}
+現在の文字数: ${Array.from(paidPart).length}
+完成条件: 有料本文を日本語で5,000〜10,000字にする。すでに書いた有用な内容は残し、重複させず、足りない実務情報を加える。手順・完成テンプレート・状況の異なる具体例・使い分け・失敗時の修正・確認表を、読者が実行できる細かさまで説明する。無料部分の繰り返しや冗長な水増しはしない。根拠のない事実を足さず、架空の条件は例と明記する。
+現在の本文がすでに5,000字以上なら変更せず返す。JSONのみ: {"paid_part":"完成した有料本文Markdown"}`,env);
+    const result = parseJson(expanded);
+    const next = String(result.paid_part || '');
+    if (Array.from(next).length > Array.from(paidPart).length) paidPart = next;
+  }
+
+  if (Array.from(paidPart).length < minimum) {
+    throw new Error('有料部分を5,000字以上にできませんでした。もう一度下書きを作成してください。');
+  }
+  draft.paid_part = Array.from(paidPart).slice(0, maximum).join('');
   return draft;
 }
 
@@ -254,7 +268,7 @@ export async function createDraft(request, env) {
     const price = Number(body.price || 100);
     const topic = `${idea.title} ${idea.intent || ''} ${idea.cluster || ''}`;
     const { queries, results } = await researchSources(topic, env, 3);
-    const text = await generate(`${draftBrief}\n選ばれた企画をnote記事の公開前下書きにしてください。\n企画: ${JSON.stringify(idea)}\n価格: ${price}円\n分量: 無料部分は約300〜500字、有料部分は1,500字以上を目標\n検索日: ${new Date().toISOString().slice(0, 10)}\n検索語: ${JSON.stringify(queries)}\n検索結果: ${JSON.stringify(results)}\n\n必須ルール:\n- 主要な事実を検索結果で確認し、出典と対応させる。体験談、取材、売上、成果、資格を捏造しない。\n- 事実・解釈・予測を分け、数字や仕様は確認日を示し、不明点は要確認とする。\n- 無料部分で対象読者、悩み、得られるものを説明する。有料部分は1,500字以上を目標にし、手順または完成テンプレート・条件違いの実例2つ・使い分け/失敗時の直し方・チェックリストを含める。\n- 参考URLは検索結果内のものだけ。公開前確認事項とSNS告知案も作る。\nJSONだけ: {"title":"タイトル","dek":"説明","category":"カテゴリ","free_part":"無料部分Markdown","paid_part":"有料部分Markdown","source_urls":[],"fact_check":[{"claim":"主張","status":"確認済/要確認","note":"確認メモ"}],"social_posts":["告知案"],"editor_notes":["公開前確認"]}`, env);
+    const text = await generate(`${draftBrief}\n選ばれた企画をnote記事の公開前下書きにしてください。\n企画: ${JSON.stringify(idea)}\n価格: ${price}円\n分量: 無料部分約300〜500字、有料部分5,000〜10,000字\n検索日: ${new Date().toISOString().slice(0, 10)}\n検索語: ${JSON.stringify(queries)}\n検索結果: ${JSON.stringify(results)}\n\n必須ルール:\n- 主要な事実を検索結果で確認し、出典と対応させる。体験談、取材、売上、成果、資格を捏造しない。\n- 事実・解釈・予測を分け、数字や仕様は確認日を示し、不明点は要確認とする。\n- 無料部分で対象読者、悩み、得られるものを説明する。有料部分は5,000〜10,000字を目安にし、手順または完成テンプレート・条件違いの実例2つ・使い分け/失敗時の直し方・チェックリストを含める。\n- 参考URLは検索結果内のものだけ。公開前確認事項とSNS告知案も作る。\nJSONだけ: {"title":"タイトル","dek":"説明","category":"カテゴリ","free_part":"無料部分Markdown","paid_part":"有料部分Markdown","source_urls":[],"fact_check":[{"claim":"主張","status":"確認済/要確認","note":"確認メモ"}],"social_posts":["告知案"],"editor_notes":["公開前確認"]}`, env);
     const draft = await ensurePaidVolume(parseJson(text), idea, env);
     const sourceMap = new Map(results.map(item => [item.url, item]));
     const cited = [...new Set(draft.source_urls || [])].map(url => sourceMap.get(url)).filter(Boolean);
