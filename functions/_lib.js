@@ -161,10 +161,14 @@ async function ensurePaidVolume(draft, idea, env) {
 現在の有料本文: ${paidPart}
 現在の文字数: ${Array.from(paidPart).length}
 完成条件: 有料本文を日本語で5,000〜10,000字にする。すでに書いた有用な内容は残し、重複させず、足りない実務情報を加える。手順・完成テンプレート・状況の異なる具体例・使い分け・失敗時の修正・確認表を、読者が実行できる細かさまで説明する。無料部分の繰り返しや冗長な水増しはしない。根拠のない事実を足さず、架空の条件は例と明記する。
-現在の本文がすでに5,000字以上なら変更せず返す。JSONのみ: {"paid_part":"完成した有料本文Markdown"}`,env);
+夜中に一人で読む人の目線で有料本文全体を読み直し、AIっぽい定型句や押しつけがましい箇所は自然な話し言葉に直す。相手の心理、復縁の結果、治療効果を断定しない。見つけた表現と修正をnight_reviewに文字列で記録し、既存のレビュー内容も必要なら残す。
+現在の本文がすでに5,000字以上なら変更せず返す。JSONのみ: {"paid_part":"完成した有料本文Markdown","night_review":["AIっぽい表現：「原文」→気になった理由：...→話し言葉に直すと：「...」"]}`,env);
     const result = parseJson(expanded);
     const next = String(result.paid_part || '');
     if (Array.from(next).length > Array.from(paidPart).length) paidPart = next;
+    if (Array.isArray(result.night_review) && result.night_review.length) {
+      draft.night_review = [...new Set([...(draft.night_review || []), ...result.night_review].map(String))].slice(0, 5);
+    }
   }
 
   if (Array.from(paidPart).length < minimum) {
