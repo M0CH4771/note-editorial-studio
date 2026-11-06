@@ -40,7 +40,6 @@ export async function finishThreadsConnect(request, env) {
 }
 
 export async function getThreadsStatus(request, env) {
-  const blocked = authorize(request, env); if (blocked) return blocked;
   const token = await env.DRAFTS.get('threads:token', 'json');
   const [queue, metrics] = await Promise.all([readPrefix(env, 'threads:q:'), readPrefix(env, 'threads:m:')]);
   const latest = metrics.sort((a,b) => String(b.measuredAt).localeCompare(String(a.measuredAt))).slice(0, 35);
