@@ -230,7 +230,7 @@ async function saveSelected() {
   catch { notify('このブラウザには保存しました。サーバー同期はできませんでした'); }
 }
 
-async async function deleteSelected() {
+async function deleteSelected() {
   const d = state.drafts.find(x => x.id === state.selected); if (!d || !confirm(`「${d.title}」を削除しますか？`)) return;
   try { await api('/api/drafts?id=' + encodeURIComponent(d.id) + '&createdAt=' + encodeURIComponent(d.createdAt), { method: 'DELETE' }); }
   catch { notify('削除をサーバーに反映できませんでした'); return; }
