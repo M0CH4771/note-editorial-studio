@@ -40,3 +40,13 @@ APIキーはGitHubのファイルには入れず、CloudflareのSecretとして�
 - `worker.js`, `wrangler.jsonc`: Cloudflare Workerと静的ファイルの配信設定
 - `functions/api/`: GeminiとTavilyを呼び出すサーバー側処理
 - `functions/_lib.js`: APIキー確認、検索、記事案・下書き生成
+
+
+## Threads自動投稿・分析
+
+- 管理画面の「Threadsを接続」からMetaの公式OAuthを完了します。
+- Meta開発者アプリでThreads APIを有効にし、OAuthリダイレクトURIへ `https://<公開サイトのドメイン>/threads/callback` を登録します。
+- Cloudflare WorkerのSecretsへ `THREADS_APP_ID` と `THREADS_APP_SECRET` を登録します。値はブラウザやリポジトリへ置きません。
+- note記事を公開後、公開URLを登録すると、生成済みThreads投稿案を1日1本ずつ自動投稿します。投稿トークンの有効期限前に更新し、投稿後の表示・反応を毎日取得します。
+- 取得した反応が次回の毎朝の企画案に渡されます。Threads側の審査、権限、レート制限、指標提供状況によっては投稿・数値取得が保留されることがあります。
+- noteへの記事公開は別です。note公式APIは利用資格が限定されるため、API利用資格がないアカウントでは公開操作を手動で行います。
