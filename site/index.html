@@ -15,13 +15,14 @@
   <main class="shell">
     <section class="panel"><h2>今日の公開候補</h2><div id="lead">接続後に表示します。</div><div id="failures"></div>
 <details><summary>週の販売実績を入力</summary><label>集計する週の日付 <input type="date" id="weekDay"></label><button id="loadWeek">開く</button><div id="weekRows"></div></details></section>
+    <section class="panel automation-panel"><div class="panel-heading"><div><span class="step">4</span><h2>Threadsの投稿と改善</h2></div><span id="threadsState" class="panel-note">未接続</span></div><p class="guide">note記事を公開済みに登録すると、告知案を1日1本ずつThreadsへ投稿します。反応は毎日取得し、次の記事企画に活かします。</p><div class="automation-row"><button id="connectThreadsBtn" class="secondary-button">Threadsを接続</button><span id="threadsAccount" class="microcopy">Metaの公式連携を使います。</span></div><div id="threadsMetrics" class="threads-metrics"><div>投稿 <b>—</b></div><div>表示 <b>—</b></div><div>反応 <b>—</b></div><div>待機 <b>—</b></div></div><p class="small-note">noteへの記事公開は、note側の公式APIが利用できる契約アカウント以外は手動です。Threadsの投稿予約は記事を公開済みに登録した後に始まります。</p></section>
 <section class="hero">
       <div>
         <p class="eyebrow">IDEA → ARTICLE → NOTE</p>
         <h1>記事づくりを、<br><em>3つの手順で。</em></h1>
-        <p class="hero-copy">テーマを決めたら、企画と下書きづくりをおまかせ。<br>最後に内容を確認して、noteへ貼り付けます。</p>
+        <p class="hero-copy">テーマを決めたら、企画と下書きづくりをおまかせ。<br>公開後はThreads告知・反応分析・次の企画改善まで進めます。</p>
       </div>
-      <div class="hero-stamp"><span>公開ボタンを押すのは</span><strong>あなたです</strong></div>
+      <div class="hero-stamp"><span>note公開だけ</span><strong>あなたが確認</strong></div>
     </section>
 
     <div class="steps"><span class="step-pill active"><b>1</b>テーマを決める</span><i>→</i><span class="step-pill"><b>2</b>企画を選ぶ</span><i>→</i><span class="step-pill"><b>3</b>下書きを直す</span></div>
@@ -65,13 +66,13 @@
         <div id="editor" class="editor empty-editor"><div class="empty-icon">✎</div><strong>記事を作ると、ここで確認できます</strong><span>本文やタイトルを直し、noteへ移せます。</span></div>
       </div>
     </section>
-    <footer><span>毎朝9時に記事案10本を自動作成</span><span>下書きはCloudflareに保存</span><span>確認・noteへの公開は手動です</span></footer>
+    <footer><span>毎朝9時に記事案10本を自動作成</span><span>下書きはCloudflareに保存</span><span>公開後のThreads投稿・分析は自動</span></footer>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <dialog id="settingsDialog" class="settings-dialog">
     <form method="dialog"><button class="close-button" aria-label="閉じる">×</button></form>
     <p class="eyebrow">はじめに</p><h2>使い方</h2>
-    <ol class="help-steps"><li>記事のテーマを入力して「記事のアイデアを探す」を押します。</li><li>気に入った案の「下書きを作る」を押します。複数選んでまとめて作れます。</li><li>本文を読み、必要なところを直して「保存」します。</li><li>「noteに貼り付け」を押し、noteの記事作成画面で公開します。</li></ol>
+    <ol class="help-steps"><li>記事のテーマを入力して「記事のアイデアを探す」を押します。</li><li>気に入った案の「下書きを作る」を押します。複数選んでまとめて作れます。</li><li>本文を読み、必要なところを直して「保存」します。</li><li>「noteに貼り付け」を押してnoteで公開し、公開URLを登録します。Threadsの告知・分析・次の企画改善は自動です。</li></ol>
     <div class="setup-box"><strong>接続パスワード</strong><p>管理者から受け取ったパスワードを入力してください。APIキーはサーバー側に保管し、この画面やGitHubには表示しません。</p><label for="appPassword">パスワード</label><input id="appPassword" type="password" autocomplete="current-password" placeholder="パスワードを入力"></div>
     <button id="savePasswordBtn" class="primary-button">接続する</button>
     <p class="small-note">下書きはこのブラウザ内に保存されます。大切な記事は「ファイルに保存」でバックアップしてください。</p>
