@@ -161,8 +161,9 @@ function renderDrafts() {
   const visible = state.drafts.filter(d => state.draftFilter === 'all' || (state.draftFilter === 'hybrid' ? !['love','fortune'].includes(d.contentMode) : d.contentMode === state.draftFilter));
   if (!visible.length) {
     root.innerHTML = '<div class="empty-small">この分類の記事はまだありません。別の表示を選ぶと、ほかの記事を確認できます。</div>';
-    const fallback = state.drafts[0];
-    if (fallback) renderEditor(fallback);
+    state.selected = null;
+    $('#editor').className = 'editor empty-editor';
+    $('#editor').innerHTML = '<div class="empty-illustration"><span>✎</span></div><strong>この分類の記事はまだありません</strong><span>「すべて」に戻すと、ほかの記事を確認できます。</span>';
     return;
   }
   root.innerHTML = visible.map(d => `<div class="draft-row ${d.id === state.selected ? 'active' : ''}" data-id="${escapeAttr(d.id)}"><strong>${escapeHtml(d.title)}</strong><span>${escapeHtml(modeLabel(d.contentMode))} · ${new Date(d.updatedAt || d.createdAt).toLocaleDateString('ja-JP')} · ${Number(d.price || 0)}円</span></div>`).join('');
@@ -215,8 +216,8 @@ async function research() {
     setWorkflowStep(1, 'テーマを調べて、恋愛系と占い系の候補を準備しています', true);
     const data = await api('/api/ideas', { method: 'POST', body: JSON.stringify({ themes: $('#themes').value, audience: $('#audience').value, count: $('#ideaCount').value, contentMode: selectedContentMode() }) });
     state.ideas = data.ideas || []; renderIdeas(); setWorkflowStep(2, `${state.ideas.length}件の候補ができました。気になる案を選んでください`); notify(`${state.ideas.length}件の企画候補を作成しました`);
-  } catch (error) { notify(error.message); }
-  finally { state.busy = false; setBusy(button, false); updateBatchButton(); if (!state.ideas.length) setWorkflowStep(1, 'テーマを少し変えて、もう一度試してください'); }
+  } catch (error) { setWorkflowStep(1, '企画を作れませんでした。少し待ってからもう一度試してください'); notify(error.message); }
+  finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
 
 async function waitForDraftJob(idea, price, onProgress = () => {}) {
@@ -248,15 +249,17 @@ async function waitForDraftJob(idea, price, onProgress = () => {}) {
 async function createDraft(idea, button) {
   if (button.disabled) return;
   const original = button.textContent;
+  let completed = false;
   button.disabled = true; button.textContent = '作成を準備中…'; setWorkflowStep(3, '選んだ企画から記事を作成しています', true);
   try {
     const price = Number($('#articlePrice').value);
     const draft = await waitForDraftJob(idea, price, (_, seconds) => { button.textContent = `記事を作成中… ${Math.floor(seconds / 60)}分`; setWorkflowStep(3, `記事を執筆しています · ${Math.floor(seconds / 60)}分経過`, true); });
+    completed = true;
     setWorkflowStep(3, '下書きができました。内容を確認してnoteへ');
     document.querySelector('#drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     notify('下書きができました。本文を確認してください');
   } catch (error) { notify(error.message); }
-  finally { button.disabled = false; button.textContent = original; }
+  finally { button.disabled = false; button.textContent = original; if (!completed) setWorkflowStep(2, '下書きを作れませんでした。内容を確認してもう一度試してください'); }
 }
 
 async function createBatch() {
@@ -276,6 +279,7 @@ async function createBatch() {
     notify(`${newDrafts.length}件の下書きを作成しました`);
   } catch (error) {
     if (newDrafts.length) { state.selected = newDrafts[0].id; renderDrafts(); }
+    setWorkflowStep(newDrafts.length ? 3 : 2, newDrafts.length ? '作成できた記事を確認してください。残りは再実行できます' : '下書き作成が止まりました。もう一度お試しください');
     notify(`${error.message}${newDrafts.length ? `（先に作成できた${newDrafts.length}件は保存済み）` : ''}`);
   } finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
