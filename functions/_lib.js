@@ -21,11 +21,11 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
 
 export function reply(data, status = 200) { return json(data, status); }
 
-export function authorize(request, env) {
+export function authorize(request, env, requireApiKeys = true) {
   if (!env.APP_PASSWORD) return json({ error: 'サーバー設定がまだ完了していません。管理者がCloudflareの秘密情報を設定してください。' }, 503);
   const supplied = request.headers.get('Authorization') || '';
   if (supplied !== `Bearer ${env.APP_PASSWORD}`) return json({ error: 'パスワードを入力してください。' }, 401);
-  if (!env.GEMINI_API_KEY || !env.TAVILY_API_KEY) return json({ error: 'APIキーの設定がまだ完了していません。' }, 503);
+  if (requireApiKeys && (!env.GEMINI_API_KEY || !env.TAVILY_API_KEY)) return json({ error: 'APIキーの設定がまだ完了していません。' }, 503);
   return null;
 }
 
