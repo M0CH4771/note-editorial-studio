@@ -18,7 +18,7 @@ function hashText(value) {
 
 function splitTitle(value) {
   const chars = Array.from(String(value || 'こころを整える小さなノート').trim());
-  const width = 15;
+  const width = 12;
   const lines = [];
   while (chars.length && lines.length < 2) lines.push(chars.splice(0, width).join(''));
   if (chars.length && lines.length === 2) lines[1] = Array.from(lines[1]).slice(0, width - 1).join('') + '…';
