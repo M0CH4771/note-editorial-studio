@@ -3,79 +3,144 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f5f2">
-  <title>記事づくりアシスタント</title>
+  <meta name="theme-color" content="#f5f4f0">
+  <title>こころ記事ラボ | 恋愛と占いの記事づくり</title>
+  <meta name="description" content="恋愛・復縁と占いの記事企画、下書き、Threads投稿、反応分析をひとつの画面で管理します。">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#"><span class="brand-mark">記</span><span>記事づくりアシスタント</span></a>
-    <div class="top-right"><span id="connection" class="connection"><i></i>接続確認中</span><button id="settingsBtn" class="icon-button" title="使い方">使い方</button></div>
+    <a class="brand" href="#" aria-label="ホーム">
+      <span class="brand-mark">心</span>
+      <span class="brand-name">こころ記事ラボ<small>CONTENT STUDIO</small></span>
+    </a>
+    <nav class="main-nav" aria-label="メインメニュー">
+      <a href="#planner">企画する</a><a href="#drafts">記事を整える</a><a href="#automation">投稿・分析</a>
+    </nav>
+    <div class="top-right">
+      <span id="connection" class="connection"><i></i>接続確認中</span>
+      <button id="settingsBtn" class="icon-button" title="使い方と設定">設定</button>
+    </div>
   </header>
+
   <main class="shell">
-    <section class="panel"><h2>今日の公開候補</h2><div id="lead">接続後に表示します。</div><div id="failures"></div>
-<details><summary>週の販売実績を入力</summary><label>集計する週の日付 <input type="date" id="weekDay"></label><button id="loadWeek">開く</button><div id="weekRows"></div></details></section>
-    <section class="panel automation-panel"><div class="panel-heading"><div><span class="step">4</span><h2>Threadsの投稿と改善</h2></div><span id="threadsState" class="panel-note">未接続</span></div><p class="guide">note記事を公開済みに登録すると、告知案を1日1本ずつThreadsへ投稿します。反応は毎日取得し、次の記事企画に活かします。</p><div class="automation-row"><button id="connectThreadsBtn" class="secondary-button">Threadsを接続</button><span id="threadsAccount" class="microcopy">Metaの公式連携を使います。</span></div><div id="threadsMetrics" class="threads-metrics"><div>投稿 <b>—</b></div><div>表示 <b>—</b></div><div>反応 <b>—</b></div><div>待機 <b>—</b></div></div><p class="small-note">noteへの記事公開は、note側の公式APIが利用できる契約アカウント以外は手動です。Threadsの投稿予約は記事を公開済みに登録した後に始まります。</p></section>
-<section class="hero">
-      <div>
-        <p class="eyebrow">IDEA → ARTICLE → NOTE</p>
-        <h1>記事づくりを、<br><em>3つの手順で。</em></h1>
-        <p class="hero-copy">テーマを決めたら、企画と下書きづくりをおまかせ。<br>公開後はThreads告知・反応分析・次の企画改善まで進めます。</p>
+    <section class="hero">
+      <div class="hero-copy-wrap">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>恋愛・復縁 × 占い・心の整理</p>
+        <h1>読んだ人の心に、<br><em>次の一歩が残る記事を。</em></h1>
+        <p class="hero-copy">企画、記事、Threadsの告知。<br class="desktop-break">作るところから、反応を見て次をよくするところまで。</p>
       </div>
-      <div class="hero-stamp"><span>note公開だけ</span><strong>あなたが確認</strong></div>
+      <a class="hero-action" href="#planner"><span class="hero-action-icon">＋</span><span>記事をつくる<small>企画を探すところから</small></span><b>↗</b></a>
     </section>
 
-    <div class="steps"><span class="step-pill active"><b>1</b>テーマを決める</span><i>→</i><span class="step-pill"><b>2</b>企画を選ぶ</span><i>→</i><span class="step-pill"><b>3</b>下書きを直す</span></div>
+    <section class="today-panel panel">
+      <div class="today-heading"><div><span class="live-dot"></span><div><p class="eyebrow">TODAY</p><h2>今日のおすすめ企画</h2></div></div><span class="today-note">朝9時に10案を自動作成</span></div>
+      <div id="lead" class="today-lead">接続すると、今日のおすすめ企画がここに表示されます。</div>
+      <div id="failures" class="failure-list" aria-live="polite"></div>
+    </section>
 
-    <section class="workspace-grid">
+    <section class="workflow" aria-label="記事づくりの手順">
+      <div class="workflow-top"><div><p class="eyebrow">YOUR WORKFLOW</p><h2>ここから公開まで、3ステップ</h2></div><span id="workflowStatus" class="workflow-status" aria-live="polite">まずはテーマを選んでください</span></div>
+      <div class="steps">
+        <div class="step-pill active" data-flow-step="1"><b>01</b><span>企画を探す</span></div><i></i>
+        <div class="step-pill" data-flow-step="2"><b>02</b><span>案を選ぶ</span></div><i></i>
+        <div class="step-pill" data-flow-step="3"><b>03</b><span>記事を確認</span></div>
+      </div>
+    </section>
+
+    <section id="planner" class="workspace-grid">
       <div class="panel research-panel">
-        <div class="panel-heading"><div><span class="step">1</span><h2>どんな記事を作りますか？</h2></div></div>
-        <p class="guide">下の例を押すか、書きたい悩みを入力してください。</p>
-        <div class="topic-chips">
-          <button class="topic-chip">返事が来ない夜</button>
-          <button class="topic-chip">別れた相手と復縁したい</button>
-          <button class="topic-chip">恋愛の不安を整理したい</button>
-          <button class="topic-chip">自分を責めてしまう</button>
+        <div class="panel-heading">
+          <div><span class="section-number">1</span><div><p class="eyebrow">START HERE</p><h2>どんな記事をつくる？</h2></div></div>
+          <span class="heading-mark">✳</span>
         </div>
-        <label for="themes">記事のテーマ</label>
-        <textarea id="themes" rows="2" placeholder="例：返事が来ない夜に考えすぎてしまう">恋愛・復縁・夜に考えすぎてしまう悩み</textarea>
+        <p class="guide">恋愛や復縁の実用記事と、占いの記事。片方でも、両方でも選べます。</p>
+        <fieldset class="mode-picker">
+          <legend>記事の方向</legend>
+          <label class="mode-card selected"><input type="radio" name="contentMode" value="both" checked><span class="mode-symbol">✦</span><span><b>両方</b><small>恋愛系と占い系を半分ずつ</small></span><i class="mode-check">✓</i></label>
+          <label class="mode-card"><input type="radio" name="contentMode" value="love"><span class="mode-symbol love-symbol">♡</span><span><b>恋愛・復縁</b><small>気持ちの整理と具体的な行動</small></span><i class="mode-check">✓</i></label>
+          <label class="mode-card"><input type="radio" name="contentMode" value="fortune"><span class="mode-symbol fortune-symbol">☾</span><span><b>占い・スピリチュアル</b><small>断定せず、考えるきっかけに</small></span><i class="mode-check">✓</i></label>
+        </fieldset>
+        <label for="themes">気になっているテーマ</label>
+        <textarea id="themes" rows="2" placeholder="例：連絡が来ない夜の気持ちを整理したい">恋愛や復縁の悩み、恋愛占いで気持ちを整える方法</textarea>
+        <div class="topic-chips" aria-label="テーマ例">
+          <button class="topic-chip" data-topic-mode="love">返事を待つ夜</button>
+          <button class="topic-chip" data-topic-mode="love">復縁したい気持ち</button>
+          <button class="topic-chip" data-topic-mode="fortune">今週の恋愛運</button>
+          <button class="topic-chip" data-topic-mode="fortune">タロットで気持ちを整理</button>
+        </div>
         <details class="extra-settings">
-          <summary>読む人や記事数を変える</summary>
+          <summary>読む人・企画数を調整</summary>
           <div class="form-row">
-            <div><label for="audience">どんな人向け？（任意）</label><input id="audience" value="恋愛や別れの悩みで夜に考え込んでしまう人"></div>
-            <div><label for="ideaCount">企画の数</label><select id="ideaCount"><option>3</option><option selected>6</option><option>8</option></select></div>
+            <div><label for="audience">どんな人向け？</label><input id="audience" value="恋愛や復縁で悩み、気持ちを整理したい人"></div>
+            <div><label for="ideaCount">企画数</label><select id="ideaCount"><option>3</option><option selected>6</option><option>8</option></select></div>
           </div>
         </details>
-        <button id="researchBtn" class="primary-button"><span>記事のアイデアを探す</span><b>→</b></button>
-        <p class="microcopy">検索して、読まれそうな切り口を提案します。少し時間がかかります。</p>
+        <button id="researchBtn" class="primary-button"><span>企画を探す</span><b>→</b></button>
+        <p class="microcopy">検索結果を調べて、違う切り口の候補を出します。</p>
       </div>
 
       <div class="panel queue-panel">
-        <div class="panel-heading"><div><span class="step">2</span><h2>記事のアイデア</h2></div><span id="ideaCountLabel" class="panel-note">まだありません</span></div>
-        <div id="ideas" class="ideas empty-state"><div class="empty-icon">✎</div><strong>まずは左でテーマを決めます</strong><span>調査が終わると、記事案がここに表示されます。</span></div>
-        <div class="batch-bar"><label for="articlePrice">記事の値段</label><select id="articlePrice"><option value="100" selected>100円</option><option value="300">300円</option><option value="500">500円</option><option value="980">980円</option></select><button id="batchBtn" class="secondary-button" disabled>選んだ案の下書きを作る</button></div>
-        <p class="microcopy">1本ずつ作ることも、チェックして最大3本まとめて作ることもできます。</p>
+        <div class="panel-heading">
+          <div><span class="section-number section-number-lilac">2</span><div><p class="eyebrow">IDEA BOARD</p><h2>企画を選ぶ</h2></div></div>
+          <span id="ideaCountLabel" class="panel-note">まだありません</span>
+        </div>
+        <div id="ideas" class="ideas empty-state">
+          <div class="empty-illustration"><span>✦</span><span>♡</span><span>☾</span></div>
+          <strong>気になるテーマから始めよう</strong>
+          <span>企画を探すと、候補とおすすめの理由がここに並びます。</span>
+        </div>
+        <div class="batch-bar">
+          <div class="price-select"><label for="articlePrice">販売価格</label><select id="articlePrice"><option value="100">100円</option><option value="300" selected>300円</option><option value="500">500円</option><option value="980">980円</option></select></div>
+          <button id="batchBtn" class="secondary-button" disabled>選んだ案で下書きを作る <span>→</span></button>
+        </div>
+        <p class="microcopy">候補を1本ずつ作成、またはチェックして最大3本まとめて作成できます。</p>
       </div>
     </section>
 
-    <section class="panel drafts-panel">
-      <div class="panel-heading drafts-heading"><div><span class="step">3</span><h2>下書きを確認して、noteへ</h2></div><div class="draft-actions"><span id="draftCount" class="panel-note">0本</span><button id="refreshDraftsBtn" class="secondary-button">下書き一覧を更新</button><button id="exportAllBtn" class="secondary-button" disabled>一覧を保存</button></div></div>
-      <p class="guide draft-guide">左のタイトルを選ぶと編集できます。直したら「保存」し、「noteに貼り付け」で記事作成画面へ移してください。</p>
+    <section id="drafts" class="panel drafts-panel">
+      <div class="panel-heading drafts-heading">
+        <div><span class="section-number section-number-gold">3</span><div><p class="eyebrow">ARTICLE DESK</p><h2>記事を確認して公開する</h2></div></div>
+        <div class="draft-actions"><span id="draftCount" class="panel-note">0本</span><button id="refreshDraftsBtn" class="secondary-button">更新</button><button id="exportAllBtn" class="secondary-button" disabled>一覧を保存</button></div>
+      </div>
+      <p class="guide draft-guide">本文を整えたら「本文をコピー」。noteで公開した後、記事URLを登録するとThreads告知が始まります。</p>
+      <div class="draft-toolbar"><label for="draftModeFilter">表示する記事</label><select id="draftModeFilter"><option value="all">すべて</option><option value="love">恋愛・復縁</option><option value="fortune">占い</option><option value="hybrid">両方・その他</option></select><span class="draft-toolbar-note">古い記事もここに残ります</span></div>
       <div class="draft-layout">
-        <div id="draftList" class="draft-list"><div class="empty-small">作った記事の下書きが、ここに並びます。</div></div>
-        <div id="editor" class="editor empty-editor"><div class="empty-icon">✎</div><strong>記事を作ると、ここで確認できます</strong><span>本文やタイトルを直し、noteへ移せます。</span></div>
+        <div id="draftList" class="draft-list"><div class="empty-small">作った記事はここに表示されます。</div></div>
+        <div id="editor" class="editor empty-editor"><div class="empty-illustration"><span>✎</span></div><strong>記事を選ぶと、ここで編集できます</strong><span>タイトル、無料部分、有料部分、Threads案を確認できます。</span></div>
       </div>
     </section>
-    <footer><span>毎朝9時に記事案10本を自動作成</span><span>下書きはCloudflareに保存</span><span>公開後のThreads投稿・分析は自動</span></footer>
+
+    <section id="automation" class="panel automation-panel">
+      <div class="automation-heading">
+        <div><span class="automation-icon">↗</span><div><p class="eyebrow">PUBLISH & LEARN</p><h2>投稿して、次の記事に活かす</h2></div></div>
+        <span id="threadsState" class="panel-note">Threads未接続</span>
+      </div>
+      <p class="guide automation-guide">Threadsを接続すると、公開済み記事の告知案を1日1本ずつ投稿。表示数と反応を取得して、次の企画づくりに使います。</p>
+      <div class="automation-content">
+        <div class="automation-connect"><button id="connectThreadsBtn" class="secondary-button">Threadsを接続する</button><span id="threadsAccount" class="microcopy">接続後、このサイトから投稿します。</span></div>
+        <div id="threadsMetrics" class="threads-metrics"><div><span>投稿済み</span><b>—</b></div><div><span>表示数</span><b>—</b></div><div><span>反応</span><b>—</b></div><div><span>投稿待ち</span><b>—</b></div></div>
+      </div>
+      <div class="automation-footnote"><span class="info-icon">i</span><p>noteへの公開は手動です。記事を公開したらURLを登録してください。Threads投稿はその後、毎朝9時の処理で始まります。</p></div>
+      <details class="sales-details"><summary>noteの販売実績を入力して、記事の改善に使う</summary><p>noteの閲覧・購入数は現在自動取得できないため、週ごとに入力します。</p><label>集計する週 <input type="date" id="weekDay"></label><button id="loadWeek" class="secondary-button">実績を開く</button><div id="weekRows"></div></details>
+    </section>
+
+    <footer><span>毎朝9時：企画10案を作成</span><span>公開後：Threads告知・反応の取得</span><span>反応を次の企画へ反映</span></footer>
   </main>
+
   <div id="toast" class="toast" role="status"></div>
   <dialog id="settingsDialog" class="settings-dialog">
     <form method="dialog"><button class="close-button" aria-label="閉じる">×</button></form>
-    <p class="eyebrow">はじめに</p><h2>使い方</h2>
-    <ol class="help-steps"><li>記事のテーマを入力して「記事のアイデアを探す」を押します。</li><li>気に入った案の「下書きを作る」を押します。複数選んでまとめて作れます。</li><li>本文を読み、必要なところを直して「保存」します。</li><li>「noteに貼り付け」を押してnoteで公開し、公開URLを登録します。Threadsの告知・分析・次の企画改善は自動です。</li></ol>
-    <div class="setup-box"><strong>接続パスワード</strong><p>管理者から受け取ったパスワードを入力してください。APIキーはサーバー側に保管し、この画面やGitHubには表示しません。</p><label for="appPassword">パスワード</label><input id="appPassword" type="password" autocomplete="current-password" placeholder="パスワードを入力"></div>
-    <button id="savePasswordBtn" class="primary-button">接続する</button>
-    <p class="small-note">下書きはこのブラウザ内に保存されます。大切な記事は「ファイルに保存」でバックアップしてください。</p>
+    <p class="eyebrow">GETTING STARTED</p><h2>使い方・接続設定</h2>
+    <ol class="help-steps">
+      <li>記事の方向を選び、テーマを入力して企画を探します。</li>
+      <li>気になる候補を選んで下書きを作ります。複数の記事もまとめて作れます。</li>
+      <li>本文を確認し、noteに貼り付けて公開します。公開URLを記事に登録します。</li>
+      <li>Threads告知案は毎朝1本ずつ投稿され、反応が次の企画に反映されます。</li>
+    </ol>
+    <div class="setup-box"><strong>接続パスワード</strong><p>APIキーはサーバー側に保管し、この画面やGitHubには表示しません。</p><label for="appPassword">パスワード</label><input id="appPassword" type="password" autocomplete="current-password" placeholder="パスワードを入力"></div>
+    <button id="savePasswordBtn" class="primary-button">接続する <b>→</b></button>
+    <p class="small-note">作成済みの記事はサーバーに保存されています。ここからの操作で過去の記事は削除されません。</p>
   </dialog>
   <script src="/app.js" defer></script>
 </body>

@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { ideas: [], drafts: [], selected: null, busy: false, retryingFailures: new Set() };
+const state = { ideas: [], drafts: [], selected: null, busy: false, retryingFailures: new Set(), draftFilter: 'all' };
 const connection = $('#connection');
 const toast = $('#toast');
 const DRAFTS_KEY = 'note-editorial-studio-drafts-v1';
@@ -30,10 +30,34 @@ async function api(url, options = {}) {
 
 function setBusy(button, busy, label) {
   button.disabled = busy;
+  button.classList.toggle('is-loading', busy);
   button.dataset.original ||= button.querySelector('span')?.textContent || button.textContent;
   const span = button.querySelector('span');
   if (span) span.textContent = busy ? label : button.dataset.original;
   else button.textContent = busy ? label : button.dataset.original;
+}
+
+
+function setWorkflowStep(active, message, busy = false) {
+  document.querySelectorAll('[data-flow-step]').forEach(node => {
+    const step = Number(node.dataset.flowStep);
+    node.classList.toggle('active', step === active);
+    node.classList.toggle('done', step < active);
+  });
+  const status = $('#workflowStatus');
+  if (status) {
+    status.textContent = message;
+    status.classList.toggle('busy', busy);
+  }
+}
+function selectedContentMode() {
+  return document.querySelector('input[name="contentMode"]:checked')?.value || 'both';
+}
+function modeLabel(mode) {
+  return mode === 'fortune' ? '占い' : mode === 'hybrid' || mode === 'both' ? '両方・ミックス' : '恋愛・復縁';
+}
+function updateModeCards() {
+  document.querySelectorAll('.mode-card').forEach(card => card.classList.toggle('selected', card.querySelector('input')?.checked));
 }
 
 async function checkStatus() {
@@ -97,18 +121,18 @@ function renderIdeas() {
   $('#ideaCountLabel').textContent = `${state.ideas.length}件`;
   if (!state.ideas.length) {
     root.className = 'ideas empty-state';
-    root.innerHTML = '<div class="empty-icon">✎</div><strong>まずは左でテーマを決めます</strong><span>調査が終わると、記事案がここに表示されます。</span>';
+    root.innerHTML = '<div class="empty-illustration"><span>✦</span><span>♡</span><span>☾</span></div><strong>気になるテーマから始めよう</strong><span>企画を探すと、候補とおすすめの理由がここに並びます。</span>';
     return;
   }
   root.className = 'ideas';
   root.innerHTML = state.ideas.map((idea, i) => `
-    <article class="idea-card">
+    <article class="idea-card" style="animation-delay:${Math.min(i*35,210)}ms">
       <h3>${escapeHtml(idea.title || 'タイトル案')}</h3>
-      <div class="idea-meta"><span>${escapeHtml(idea.cluster || '記事案')}</span><span>·</span><span>AIのおすすめ度（目安）</span><span class="score">${Number(idea.score || 0)}点</span></div>
+      <div class="idea-meta"><span class="idea-mode">${escapeHtml(modeLabel(idea.contentMode))}</span><span>${escapeHtml(idea.cluster || '記事案')}</span><span>·</span><span class="score">${Number(idea.score || 0)}点</span></div>
       <div class="idea-hook">${escapeHtml(idea.hook || idea.intent || '')}</div>
-      <details class="idea-details"><summary>なぜこの案がおすすめ？</summary><p><b>読者が知りたいこと</b><br>${escapeHtml(idea.intent || '調査中')}</p><p><b>需要について見つかったこと</b><br>${escapeHtml(idea.demand_evidence || '十分な情報が見つかりませんでした')}</p><p><b>似た記事</b><br>${escapeHtml(idea.competition || '調査中')}</p><p><b>参考にしたページ</b><br>${(idea.sources || []).map(s => `<a href="${escapeAttr(s.url)}" target="_blank" rel="noreferrer">${escapeHtml(s.title || s.url)}</a>`).join(' · ') || '出典候補なし'}</p></details>
+      <details class="idea-details"><summary>おすすめの理由と参考情報</summary><p><b>読者が知りたいこと</b><br>${escapeHtml(idea.intent || '調査中')}</p><p><b>需要について</b><br>${escapeHtml(idea.demand_evidence || '十分な情報が見つかりませんでした')}</p><p><b>似た記事・競合</b><br>${escapeHtml(idea.competition || '調査中')}</p><p><b>参考にしたページ</b><br>${(idea.sources || []).map(s => `<a href="${escapeAttr(s.url)}" target="_blank" rel="noreferrer">${escapeHtml(s.title || s.url)}</a>`).join(' · ') || '出典候補なし'}</p></details>
       <button data-draft="${i}">この案で下書きを作る</button>
-      <label class="idea-pick"><input type="checkbox" data-pick="${i}">まとめて作る案に入れる</label>
+      <label class="idea-pick"><input type="checkbox" data-pick="${i}">まとめて作る</label>
     </article>`).join('');
   root.querySelectorAll('[data-draft]').forEach(button => button.addEventListener('click', () => createDraft(state.ideas[Number(button.dataset.draft)], button)));
   root.querySelectorAll('[data-pick]').forEach(box => box.addEventListener('change', updateBatchButton));
@@ -128,16 +152,24 @@ function renderDrafts() {
   $('#draftCount').textContent = `${state.drafts.length}本`;
   $('#exportAllBtn').disabled = !state.drafts.length;
   if (!state.drafts.length) {
-    root.innerHTML = '<div class="empty-small">作った記事の下書きが、ここに並びます。</div>';
+    root.innerHTML = '<div class="empty-small">作った記事はここに表示されます。</div>';
     $('#editor').className = 'editor empty-editor';
-    $('#editor').innerHTML = '<div class="empty-icon">✎</div><strong>下書きを選ぶと編集できます</strong><span>出典・事実確認メモ・SNS告知案も一緒に保管。</span>';
+    $('#editor').innerHTML = '<div class="empty-illustration"><span>✎</span></div><strong>記事を選ぶと、ここで編集できます</strong><span>本文やThreads案を確認できます。</span>';
     state.selected = null;
     return;
   }
-  root.innerHTML = state.drafts.map(d => `<div class="draft-row ${d.id === state.selected ? 'active' : ''}" data-id="${d.id}"><strong>${escapeHtml(d.title)}</strong><span>${new Date(d.updatedAt || d.createdAt).toLocaleDateString('ja-JP')} · ${d.price}円想定</span></div>`).join('');
+  const visible = state.drafts.filter(d => { const mode = d.contentMode || 'love'; return state.draftFilter === 'all' || (state.draftFilter === 'hybrid' ? ['hybrid','both'].includes(mode) : mode === state.draftFilter); });
+  if (!visible.length) {
+    root.innerHTML = '<div class="empty-small">この分類の記事はまだありません。別の表示を選ぶと、ほかの記事を確認できます。</div>';
+    state.selected = null;
+    $('#editor').className = 'editor empty-editor';
+    $('#editor').innerHTML = '<div class="empty-illustration"><span>✎</span></div><strong>この分類の記事はまだありません</strong><span>「すべて」に戻すと、ほかの記事を確認できます。</span>';
+    return;
+  }
+  root.innerHTML = visible.map(d => `<div class="draft-row ${d.id === state.selected ? 'active' : ''}" data-id="${escapeAttr(d.id)}"><strong>${escapeHtml(d.title)}</strong><span>${escapeHtml(modeLabel(d.contentMode))} · ${new Date(d.updatedAt || d.createdAt).toLocaleDateString('ja-JP')} · ${Number(d.price || 0)}円</span></div>`).join('');
   root.querySelectorAll('.draft-row').forEach(row => row.addEventListener('click', () => { state.selected = row.dataset.id; renderDrafts(); }));
-  const draft = state.drafts.find(d => d.id === state.selected) || state.drafts[0];
-  if (!state.selected) state.selected = draft.id;
+  const draft = visible.find(d => d.id === state.selected) || visible[0];
+  state.selected = draft.id;
   renderEditor(draft);
 }
 
@@ -145,7 +177,7 @@ function renderEditor(d) {
   const root = $('#editor');
   root.className = 'editor';
   root.innerHTML = `
-    <div class="editor-toolbar"><strong>記事の下書き · ${escapeHtml(d.category || '未分類')}</strong><div class="editor-buttons"><button class="secondary-button" id="saveBtn">保存</button><button class="secondary-button" id="copyBtn">本文をコピー</button><button class="secondary-button" id="downloadBtn">ファイルに保存</button><button class="secondary-button" id="deleteBtn">削除</button></div></div>
+    <div class="editor-toolbar"><strong>記事の下書き · ${escapeHtml(modeLabel(d.contentMode))} · ${escapeHtml(d.category || '未分類')}</strong><div class="editor-buttons"><button class="secondary-button" id="saveBtn">保存</button><button class="secondary-button" id="copyBtn">本文をコピー</button><button class="secondary-button" id="downloadBtn">ファイルに保存</button><button class="secondary-button" id="deleteBtn">削除</button></div></div>
     <label for="editTitle">タイトル</label><input id="editTitle" value="${escapeAttr(d.title)}">
     <label for="editDek">説明文</label><input id="editDek" value="${escapeAttr(d.dek || '')}">
     <label for="editFree">無料部分</label><textarea id="editFree">${escapeHtml(d.freePart || '')}</textarea>
@@ -179,11 +211,12 @@ function renderEditor(d) {
 
 async function research() {
   if (state.busy) return;
-  const button = $('#researchBtn'); state.busy = true; setBusy(button, true, '検索して企画を探しています…'); updateBatchButton();
+  const button = $('#researchBtn'); state.busy = true; setWorkflowStep(1, '検索結果を確認しながら企画を考えています', true); setBusy(button, true, '企画を調べています…'); updateBatchButton();
   try {
-    const data = await api('/api/ideas', { method: 'POST', body: JSON.stringify({ themes: $('#themes').value, audience: $('#audience').value, count: $('#ideaCount').value }) });
-    state.ideas = data.ideas || []; renderIdeas(); notify(`${state.ideas.length}件の企画候補を作成しました`);
-  } catch (error) { notify(error.message); }
+    setWorkflowStep(1, 'テーマを調べて、恋愛系と占い系の候補を準備しています', true);
+    const data = await api('/api/ideas', { method: 'POST', body: JSON.stringify({ themes: $('#themes').value, audience: $('#audience').value, count: $('#ideaCount').value, contentMode: selectedContentMode() }) });
+    state.ideas = data.ideas || []; renderIdeas(); setWorkflowStep(2, `${state.ideas.length}件の候補ができました。気になる案を選んでください`); notify(`${state.ideas.length}件の企画候補を作成しました`);
+  } catch (error) { setWorkflowStep(1, '企画を作れませんでした。少し待ってからもう一度試してください'); notify(error.message); }
   finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
 
@@ -216,30 +249,37 @@ async function waitForDraftJob(idea, price, onProgress = () => {}) {
 async function createDraft(idea, button) {
   if (button.disabled) return;
   const original = button.textContent;
-  button.disabled = true; button.textContent = '作成を準備中…';
+  let completed = false;
+  button.disabled = true; button.textContent = '作成を準備中…'; setWorkflowStep(3, '選んだ企画から記事を作成しています', true);
   try {
     const price = Number($('#articlePrice').value);
-    const draft = await waitForDraftJob(idea, price, (_, seconds) => { button.textContent = `記事を作成中… ${Math.floor(seconds / 60)}分`; });
+    const draft = await waitForDraftJob(idea, price, (_, seconds) => { button.textContent = `記事を作成中… ${Math.floor(seconds / 60)}分`; setWorkflowStep(3, `記事を執筆しています · ${Math.floor(seconds / 60)}分経過`, true); });
+    completed = true;
+    setWorkflowStep(3, '下書きができました。内容を確認してnoteへ');
+    document.querySelector('#drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     notify('下書きができました。本文を確認してください');
   } catch (error) { notify(error.message); }
-  finally { button.disabled = false; button.textContent = original; }
+  finally { button.disabled = false; button.textContent = original; if (!completed) setWorkflowStep(2, '下書きを作れませんでした。内容を確認してもう一度試してください'); }
 }
 
 async function createBatch() {
   const selected = [...document.querySelectorAll('[data-pick]:checked')].slice(0, 3).map(box => state.ideas[Number(box.dataset.pick)]);
   if (!selected.length || state.busy) return;
-  const button = $('#batchBtn'); state.busy = true; setBusy(button, true, `1/${selected.length}件目を作成中…`);
+  const button = $('#batchBtn'); state.busy = true; setWorkflowStep(3, '選んだ企画から記事を順番に作成しています', true); setBusy(button, true, `1/${selected.length}件目を作成中…`);
   const newDrafts = [];
   try {
     for (let i = 0; i < selected.length; i++) {
       setBusy(button, true, `${i + 1}/${selected.length}件目を作成中…`);
-      const draft = await waitForDraftJob(selected[i], Number($('#articlePrice').value), (_, seconds) => setBusy(button, true, `${i + 1}/${selected.length}件目・記事生成中（${Math.floor(seconds / 60)}分）…`));
+      const draft = await waitForDraftJob(selected[i], Number($('#articlePrice').value), (_, seconds) => { setBusy(button, true, `${i + 1}/${selected.length}件目を作成中…`); setWorkflowStep(3, `${i + 1}/${selected.length}件目 · 記事を執筆しています`, true); });
       newDrafts.unshift(draft);
     }
     document.querySelectorAll('[data-pick]:checked').forEach(box => { box.checked = false; });
+    setWorkflowStep(3, `${newDrafts.length}本の下書きができました。内容を確認してください`);
+    document.querySelector('#drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     notify(`${newDrafts.length}件の下書きを作成しました`);
   } catch (error) {
     if (newDrafts.length) { state.selected = newDrafts[0].id; renderDrafts(); }
+    setWorkflowStep(newDrafts.length ? 3 : 2, newDrafts.length ? '作成できた記事を確認してください。残りは再実行できます' : '下書き作成が止まりました。もう一度お試しください');
     notify(`${error.message}${newDrafts.length ? `（先に作成できた${newDrafts.length}件は保存済み）` : ''}`);
   } finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
@@ -306,7 +346,9 @@ $('#savePasswordBtn').addEventListener('click', async () => {
   else { localStorage.removeItem(PASSWORD_KEY); $('#appPassword').value = ''; notify('パスワードを確認してください'); }
 });
 $('#exportAllBtn').addEventListener('click', exportAll);
-document.querySelectorAll('.topic-chip').forEach(button => button.addEventListener('click', () => { $('#themes').value = button.textContent; document.querySelectorAll('.topic-chip').forEach(chip => chip.classList.toggle('selected', chip === button)); }));
+document.querySelectorAll('.topic-chip').forEach(button => button.addEventListener('click', () => { $('#themes').value = button.textContent; document.querySelectorAll('.topic-chip').forEach(chip => chip.classList.toggle('selected', chip === button)); const mode = button.dataset.topicMode; if (mode) { const radio = document.querySelector(`input[name="contentMode"][value="${mode}"]`); if (radio) { radio.checked = true; updateModeCards(); } } }));
+document.querySelectorAll('input[name="contentMode"]').forEach(input => input.addEventListener('change', updateModeCards));
+$('#draftModeFilter').addEventListener('change', event => { state.draftFilter = event.target.value; state.selected = null; renderDrafts(); });
 
 loadDrafts();
 checkStatus();
