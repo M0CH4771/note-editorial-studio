@@ -6,6 +6,28 @@ import {
 
 export class DailyDraftWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
+    const manual = event.payload?.manualDraft;
+    if (manual) {
+      const { jobId, draftId, idea, ideaId, price, dateKey } = manual;
+      const jobKey = 'job:' + jobId;
+      await this.env.DRAFTS.put(jobKey, JSON.stringify({ jobId, status: 'running', title: idea.title, updatedAt: new Date().toISOString() }), { expirationTtl: 86400 });
+      try {
+        const result = await step.do('write-manual-' + jobId, { retries: { limit: 1, delay: '1 minute', backoff: 'constant' } }, async () => {
+          const draft = await createScheduledDraft({ ...idea, id: draftId }, this.env, dateKey);
+          draft.id = draftId;
+          draft.ideaId = ideaId;
+          draft.price = price;
+          draft.automated = false;
+          await saveDraft(this.env, draft);
+          return { draftId, title: draft.title };
+        });
+        await this.env.DRAFTS.put(jobKey, JSON.stringify({ jobId, status: 'completed', draftId: result.draftId, title: result.title, updatedAt: new Date().toISOString() }), { expirationTtl: 86400 });
+        return { status: 'completed', draftId: result.draftId };
+      } catch (error) {
+        await this.env.DRAFTS.put(jobKey, JSON.stringify({ jobId, status: 'failed', title: idea.title, error: error.message || '記事の作成に失敗しました。', updatedAt: new Date().toISOString() }), { expirationTtl: 86400 });
+        throw error;
+      }
+    }
     const dateKey = event.payload?.dateKey || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const retry = event.payload?.failure;
     const ideas = retry?.idea ? [retry.idea] : await step.do('find-10-article-ideas', async () => {
@@ -63,6 +85,40 @@ export default {
         catch(e){if(!/already exists/i.test(String(e))) throw e;}
         return reply({ok:true},202);
       }
+    }
+    if (pathname === '/api/draft-jobs') {
+      const blocked = authorize(request, env); if (blocked) return blocked;
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          const idea = body.idea;
+          const price = Number(body.price || 100);
+          if (!idea || typeof idea.title !== 'string' || !idea.title.trim()) return reply({ error: '記事のアイデアを選んでください。' }, 400);
+          if (![100, 300, 500, 980].includes(price)) return reply({ error: '記事の価格を選び直してください。' }, 400);
+          if (!env.DAILY_DRAFTS || !env.DRAFTS) return reply({ error: '記事作成のバックグラウンド設定がありません。' }, 503);
+          const jobId = crypto.randomUUID();
+          const draftId = crypto.randomUUID();
+          const dateKey = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          const job = { jobId, status: 'queued', title: idea.title.slice(0, 200), createdAt: new Date().toISOString() };
+          await env.DRAFTS.put('job:' + jobId, JSON.stringify(job), { expirationTtl: 86400 });
+          try {
+            await env.DAILY_DRAFTS.create({ id: 'manual-' + jobId, params: { manualDraft: { jobId, draftId, idea, ideaId: idea.id || null, price, dateKey } } });
+          } catch (error) {
+            await env.DRAFTS.put('job:' + jobId, JSON.stringify({ ...job, status: 'failed', error: error.message || '作成処理を開始できませんでした。' }), { expirationTtl: 86400 });
+            throw error;
+          }
+          return reply({ jobId, status: 'queued' }, 202);
+        } catch (error) {
+          return reply({ error: error.message || '記事作成を開始できませんでした。' }, 500);
+        }
+      }
+      if (request.method === 'GET') {
+        const jobId = new URL(request.url).searchParams.get('id') || '';
+        if (!/^[a-f0-9-]{36}$/i.test(jobId)) return reply({ error: '作成状況を確認できません。' }, 400);
+        const job = await env.DRAFTS.get('job:' + jobId, 'json');
+        return job ? reply(job) : reply({ error: '作成状況が見つかりません。下書き一覧を更新してください。' }, 404);
+      }
+      return reply({ error: 'この操作は利用できません。' }, 405);
     }
     if (pathname === '/api/status' && request.method === 'GET') return getStatus(request, env);
     if (pathname === '/api/ideas' && request.method === 'POST') return createIdeas(request, env);
