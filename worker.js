@@ -73,7 +73,7 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === '/threads/callback' && request.method === 'GET') return finishThreadsConnect(request, env);
     if(pathname==='/api/threads/connect' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return beginThreadsConnect(request,env); }
-    if(pathname==='/api/threads/status' && request.method==='GET') return getThreadsStatus(request,env);
+    if(pathname==='/api/threads/status' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return getThreadsStatus(request,env); }
     if(pathname==='/api/weekly' && ['GET','PUT'].includes(request.method)) return weekly(request,env);
     if(pathname==='/api/failures'){
       const blocked=authorize(request,env); if(blocked) return blocked;
