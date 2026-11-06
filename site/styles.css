@@ -218,3 +218,5 @@ footer{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;padding:20px 
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 .cover-editor{padding-bottom:14px}.cover-heading{display:flex;justify-content:space-between;align-items:center;gap:14px}.cover-heading label{margin:0}.cover-heading .microcopy{margin:4px 0 0}.cover-preview{display:block;width:100%;max-height:340px;object-fit:cover;border:1px solid var(--line);border-radius:12px;margin-top:12px}.cover-download{display:inline-flex;margin-top:9px;text-decoration:none}.cover-cost-note{font-size:9px;color:#92968f;margin:8px 0 0}.cover-heading .secondary-button{white-space:nowrap}@media(max-width:600px){.cover-heading{align-items:flex-start;flex-direction:column}.cover-heading .secondary-button{width:100%}.cover-preview{max-height:220px}}
+
+.workflow-status.error{color:#a65334;max-width:58%;text-align:left;overflow-wrap:anywhere;line-height:1.5}@media(max-width:700px){.workflow-status.error{max-width:100%;text-align:left}}
