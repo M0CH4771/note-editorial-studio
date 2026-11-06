@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { ideas: [], drafts: [], selected: null, busy: false };
+const state = { ideas: [], drafts: [], selected: null, busy: false, retryingFailures: new Set() };
 const connection = $('#connection');
 const toast = $('#toast');
 const DRAFTS_KEY = 'note-editorial-studio-drafts-v1';
@@ -14,10 +14,18 @@ function notify(message) {
 
 async function api(url, options = {}) {
   const password = localStorage.getItem(PASSWORD_KEY) || '';
-  const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(password ? { Authorization: `Bearer ${password}` } : {}), ...(options.headers || {}) } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `エラー (${response.status})`);
-  return data;
+  const { timeoutMs = 90000, ...requestOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...requestOptions, signal: controller.signal, headers: { 'Content-Type': 'application/json', ...(password ? { Authorization: `Bearer ${password}` } : {}), ...(options.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `エラー (${response.status})`);
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('通信が時間切れになりました。接続を確認して、もう一度お試しください。');
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 
 function setBusy(button, busy, label) {
@@ -162,32 +170,54 @@ async function research() {
   finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
 
+async function waitForDraftJob(idea, price, onProgress = () => {}) {
+  const { jobId } = await api('/api/draft-jobs', { method: 'POST', timeoutMs: 30000, body: JSON.stringify({ idea, price }) });
+  if (!jobId) throw new Error('下書きの作成を開始できませんでした。');
+  const startedAt = Date.now();
+  const maxWait = 12 * 60 * 1000;
+  while (Date.now() - startedAt < maxWait) {
+    const job = await api('/api/draft-jobs?id=' + encodeURIComponent(jobId), { timeoutMs: 15000 });
+    if (job.status === 'completed') {
+      await syncDrafts();
+      const draft = state.drafts.find(item => item.id === job.draftId);
+      if (!draft) throw new Error('記事は作成されましたが、一覧への反映を確認できません。下書き一覧を更新してください。');
+      state.selected = draft.id; renderDrafts();
+      return draft;
+    }
+    if (job.status === 'failed') throw new Error(job.error || '記事の作成に失敗しました。内容を確認して再度お試しください。');
+    onProgress(job, Math.floor((Date.now() - startedAt) / 1000));
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+  throw new Error('作成処理はバックグラウンドで続いています。下書き一覧を更新して、完了を確認してください。');
+}
+
 async function createDraft(idea, button) {
   if (button.disabled) return;
-  button.disabled = true; button.textContent = '調査・執筆中…';
+  const original = button.textContent;
+  button.disabled = true; button.textContent = '作成を準備中…';
   try {
-    const draft = await api('/api/draft', { method: 'POST', body: JSON.stringify({ idea, price: Number($('#articlePrice').value), length: '標準（約1,500〜2,500字）' }) });
-    state.drafts.unshift(draft); state.selected = draft.id; saveDrafts(); renderDrafts(); notify('出典と確認メモ付きの下書きを作成しました');
+    const price = Number($('#articlePrice').value);
+    const draft = await waitForDraftJob(idea, price, (_, seconds) => { button.textContent = `記事を作成中… ${Math.floor(seconds / 60)}分`; });
+    notify('下書きができました。本文を確認してください');
   } catch (error) { notify(error.message); }
-  finally { button.disabled = false; button.textContent = '下書き作成'; }
+  finally { button.disabled = false; button.textContent = original; }
 }
 
 async function createBatch() {
   const selected = [...document.querySelectorAll('[data-pick]:checked')].slice(0, 3).map(box => state.ideas[Number(box.dataset.pick)]);
   if (!selected.length || state.busy) return;
-  const button = $('#batchBtn'); state.busy = true; setBusy(button, true, `1/${selected.length}件目を調査・執筆中…`);
+  const button = $('#batchBtn'); state.busy = true; setBusy(button, true, `1/${selected.length}件目を作成中…`);
   const newDrafts = [];
   try {
     for (let i = 0; i < selected.length; i++) {
-      setBusy(button, true, `${i + 1}/${selected.length}件目を調査・執筆中…`);
-      const draft = await api('/api/draft', { method: 'POST', body: JSON.stringify({ idea: selected[i], price: Number($('#articlePrice').value), length: '標準（約1,500〜2,500字）' }) });
+      setBusy(button, true, `${i + 1}/${selected.length}件目を作成中…`);
+      const draft = await waitForDraftJob(selected[i], Number($('#articlePrice').value), (_, seconds) => setBusy(button, true, `${i + 1}/${selected.length}件目・記事生成中（${Math.floor(seconds / 60)}分）…`));
       newDrafts.unshift(draft);
     }
-    state.drafts.unshift(...newDrafts); state.selected = newDrafts[0]?.id || state.selected; saveDrafts(); renderDrafts();
     document.querySelectorAll('[data-pick]:checked').forEach(box => { box.checked = false; });
     notify(`${newDrafts.length}件の下書きを作成しました`);
   } catch (error) {
-    if (newDrafts.length) { state.drafts.unshift(...newDrafts); state.selected = newDrafts[0].id; saveDrafts(); renderDrafts(); }
+    if (newDrafts.length) { state.selected = newDrafts[0].id; renderDrafts(); }
     notify(`${error.message}${newDrafts.length ? `（先に作成できた${newDrafts.length}件は保存済み）` : ''}`);
   } finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
@@ -200,7 +230,7 @@ async function saveSelected() {
   catch { notify('このブラウザには保存しました。サーバー同期はできませんでした'); }
 }
 
-async function deleteSelected() {
+async async function deleteSelected() {
   const d = state.drafts.find(x => x.id === state.selected); if (!d || !confirm(`「${d.title}」を削除しますか？`)) return;
   try { await api('/api/drafts?id=' + encodeURIComponent(d.id) + '&createdAt=' + encodeURIComponent(d.createdAt), { method: 'DELETE' }); }
   catch { notify('削除をサーバーに反映できませんでした'); return; }
@@ -232,6 +262,13 @@ async function copyText(text) {
 function escapeHtml(value = '') { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function escapeAttr(value = '') { return escapeHtml(value); }
 
+$('#refreshDraftsBtn').addEventListener('click', async () => {
+  const button = $('#refreshDraftsBtn');
+  button.disabled = true; button.textContent = '更新中…';
+  try { await syncDrafts(); notify('下書き一覧を更新しました'); }
+  catch (error) { notify(error.message); }
+  finally { button.disabled = false; button.textContent = '下書き一覧を更新'; }
+});
 $('#researchBtn').addEventListener('click', research);
 $('#batchBtn').addEventListener('click', createBatch);
 $('#settingsBtn').addEventListener('click', () => $('#settingsDialog').showModal());
@@ -260,12 +297,43 @@ function renderLead(){
   box.querySelector('button').onclick=()=>{state.selected=d.id;renderDrafts();$('#editor').scrollIntoView();};
 }
 async function refreshFailures(){
-  const {items}=await api('/api/failures');
+  const {items=[]}=await api('/api/failures');
   const box=$('#failures');box.replaceChildren();
   for(const item of items){
-    const btn=document.createElement('button');btn.textContent=item.title+' を再作成';box.append(btn);
-    btn.onclick=async()=>{btn.disabled=true;try{await api('/api/failures',{method:'POST',body:JSON.stringify({id:item.id})});btn.textContent='再作成を受付済み（後で再読み込み）';}catch(e){btn.disabled=false;notify(e.message);}};
+    const btn=document.createElement('button');
+    const pending=state.retryingFailures.has(item.id);
+    btn.textContent=pending?'再作成中…':item.title+' を再作成';
+    btn.disabled=pending;
+    box.append(btn);
+    btn.onclick=async()=>{
+      if(state.retryingFailures.has(item.id))return;
+      state.retryingFailures.add(item.id);btn.disabled=true;btn.textContent='再作成を開始中…';
+      try{
+        await api('/api/failures',{method:'POST',body:JSON.stringify({id:item.id})});
+      }catch(e){state.retryingFailures.delete(item.id);btn.disabled=false;btn.textContent=item.title+' を再作成';notify(e.message);return;}
+      notify('再作成を受け付けました。完了まで一覧で確認します');
+      await refreshFailures().catch(()=>{});
+      watchFailure(item.id,Date.now());
+    };
   }
+}
+async function watchFailure(id,startedAt){
+  try{
+    const {items=[]}=await api('/api/failures',{timeoutMs:15000});
+    if(!items.some(item=>item.id===id)){
+      state.retryingFailures.delete(id);
+      await syncDrafts();
+      notify('再作成が完了しました。下書き一覧に追加しました');
+      return;
+    }
+  }catch{}
+  if(Date.now()-startedAt>=180000){
+    state.retryingFailures.delete(id);
+    await refreshFailures().catch(()=>{});
+    notify('再作成に時間がかかっています。表示を更新しました。');
+    return;
+  }
+  setTimeout(()=>watchFailure(id,startedAt),8000);
 }
 const weekInput=$('#weekDay');
 weekInput.value=new Date(Date.now()+9*3600000-7*86400000).toISOString().slice(0,10);
