@@ -1,4 +1,5 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
+import { getCoverImage, regenerateCover } from './functions/cover.js';
 import { beginThreadsConnect, finishThreadsConnect, getThreadsStatus, threadsDailyTick } from './functions/threads.js';
 import {
   authorize, weekly, createDailyIdeas, createDraft, createIdeas, createScheduledDraft, getStatus,
@@ -75,6 +76,10 @@ export default {
     if (pathname === '/threads/callback' && request.method === 'GET') return finishThreadsConnect(request, env);
     if(pathname==='/api/threads/connect' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return beginThreadsConnect(request,env); }
     if(pathname==='/api/threads/status' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return getThreadsStatus(request,env); }
+    if (pathname === '/api/cover' && ['GET','POST'].includes(request.method)) {
+      const blocked = authorize(request, env); if (blocked) return blocked;
+      return request.method === 'GET' ? getCoverImage(request, env) : regenerateCover(request, env);
+    }
     if(pathname==='/api/weekly' && ['GET','PUT'].includes(request.method)) return weekly(request,env);
     if(pathname==='/api/failures'){
       const blocked=authorize(request,env); if(blocked) return blocked;
