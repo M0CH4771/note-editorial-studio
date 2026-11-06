@@ -20,7 +20,16 @@ async function api(url, options = {}) {
   try {
     const response = await fetch(url, { ...requestOptions, signal: controller.signal, headers: { 'Content-Type': 'application/json', ...(password ? { Authorization: `Bearer ${password}` } : {}), ...(options.headers || {}) } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `エラー (${response.status})`);
+    if (!response.ok) {
+      const detail = String(data.error || `エラー (${response.status})`);
+      if (response.status === 429 || /RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(detail)) {
+        throw new Error(`Geminiまたは検索APIの無料枠・利用上限に達した可能性があります。上限が戻るまで待つか、設定を確認してください。詳細: ${detail.slice(0, 180)}`);
+      }
+      if ([401, 403].includes(response.status) || /API key|unauthorized|forbidden|PERMISSION_DENIED/i.test(detail)) {
+        throw new Error(`APIキーまたは権限を確認してください。詳細: ${detail.slice(0, 180)}`);
+      }
+      throw new Error(detail);
+    }
     return data;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('通信が時間切れになりました。接続を確認して、もう一度お試しください。');
@@ -48,6 +57,7 @@ function setWorkflowStep(active, message, busy = false) {
   if (status) {
     status.textContent = message;
     status.classList.toggle('busy', busy);
+    status.classList.toggle('error', message.startsWith('企画を作れませんでした'));
   }
 }
 function selectedContentMode() {
@@ -290,7 +300,7 @@ async function research() {
     setWorkflowStep(1, 'テーマを調べて、恋愛系と占い系の候補を準備しています', true);
     const data = await api('/api/ideas', { method: 'POST', body: JSON.stringify({ themes: $('#themes').value, audience: $('#audience').value, count: $('#ideaCount').value, contentMode: selectedContentMode() }) });
     state.ideas = data.ideas || []; renderIdeas(); setWorkflowStep(2, `${state.ideas.length}件の候補ができました。気になる案を選んでください`); notify(`${state.ideas.length}件の企画候補を作成しました`);
-  } catch (error) { setWorkflowStep(1, '企画を作れませんでした。少し待ってからもう一度試してください'); notify(error.message); }
+  } catch (error) { const detail = String(error.message || error).slice(0, 260); setWorkflowStep(1, `企画を作れませんでした：${detail}`); notify(detail); }
   finally { state.busy = false; setBusy(button, false); updateBatchButton(); }
 }
 
