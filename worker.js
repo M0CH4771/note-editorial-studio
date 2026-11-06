@@ -77,7 +77,7 @@ export default {
     if(pathname==='/api/threads/connect' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return beginThreadsConnect(request,env); }
     if(pathname==='/api/threads/status' && request.method==='GET') { const blocked=authorize(request,env); if(blocked) return blocked; return getThreadsStatus(request,env); }
     if (pathname === '/api/cover' && ['GET','POST'].includes(request.method)) {
-      const blocked = authorize(request, env); if (blocked) return blocked;
+      const blocked = authorize(request, env, false); if (blocked) return blocked;
       return request.method === 'GET' ? getCoverImage(request, env) : regenerateCover(request, env);
     }
     if(pathname==='/api/weekly' && ['GET','PUT'].includes(request.method)) return weekly(request,env);
