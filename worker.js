@@ -14,7 +14,7 @@ export class DailyDraftWorkflow extends WorkflowEntrypoint {
       await this.env.DRAFTS.put(jobKey, JSON.stringify({ jobId, status: 'running', title: idea.title, updatedAt: new Date().toISOString() }), { expirationTtl: 86400 });
       try {
         const result = await step.do('write-manual-' + jobId, { retries: { limit: 1, delay: '1 minute', backoff: 'constant' } }, async () => {
-          const draft = await createScheduledDraft({ ...idea, id: draftId }, this.env, dateKey);
+          const draft = await createScheduledDraft({ ...idea, id: draftId, price }, this.env, dateKey);
           draft.id = draftId;
           draft.ideaId = ideaId;
           draft.price = price;
