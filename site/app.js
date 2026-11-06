@@ -178,9 +178,14 @@ async function waitForDraftJob(idea, price, onProgress = () => {}) {
   while (Date.now() - startedAt < maxWait) {
     const job = await api('/api/draft-jobs?id=' + encodeURIComponent(jobId), { timeoutMs: 15000 });
     if (job.status === 'completed') {
-      await syncDrafts();
-      const draft = state.drafts.find(item => item.id === job.draftId);
-      if (!draft) throw new Error('記事は作成されましたが、一覧への反映を確認できません。下書き一覧を更新してください。');
+      let draft;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await syncDrafts();
+        draft = state.drafts.find(item => item.id === job.draftId);
+        if (draft) break;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+      if (!draft) throw new Error('記事は作成されましたが、一覧への反映に時間がかかっています。下書き一覧を更新してください。');
       state.selected = draft.id; renderDrafts();
       return draft;
     }
