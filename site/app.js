@@ -327,7 +327,7 @@ async function watchFailure(id,startedAt){
       return;
     }
   }catch{}
-  if(Date.now()-startedAt>=180000){
+  if(Date.now()-startedAt>=600000){
     state.retryingFailures.delete(id);
     await refreshFailures().catch(()=>{});
     notify('再作成に時間がかかっています。表示を更新しました。');
