@@ -54,7 +54,7 @@ function selectedContentMode() {
   return document.querySelector('input[name="contentMode"]:checked')?.value || 'both';
 }
 function modeLabel(mode) {
-  return mode === 'love' ? '恋愛・復縁' : mode === 'fortune' ? '占い' : '両方・ミックス';
+  return mode === 'fortune' ? '占い' : mode === 'hybrid' || mode === 'both' ? '両方・ミックス' : '恋愛・復縁';
 }
 function updateModeCards() {
   document.querySelectorAll('.mode-card').forEach(card => card.classList.toggle('selected', card.querySelector('input')?.checked));
@@ -158,7 +158,7 @@ function renderDrafts() {
     state.selected = null;
     return;
   }
-  const visible = state.drafts.filter(d => state.draftFilter === 'all' || (state.draftFilter === 'hybrid' ? !['love','fortune'].includes(d.contentMode) : d.contentMode === state.draftFilter));
+  const visible = state.drafts.filter(d => { const mode = d.contentMode || 'love'; return state.draftFilter === 'all' || (state.draftFilter === 'hybrid' ? ['hybrid','both'].includes(mode) : mode === state.draftFilter); });
   if (!visible.length) {
     root.innerHTML = '<div class="empty-small">この分類の記事はまだありません。別の表示を選ぶと、ほかの記事を確認できます。</div>';
     state.selected = null;
