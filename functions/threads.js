@@ -113,7 +113,7 @@ async function publishOne(env, token) {
 }
 
 async function collectInsights(env, token) {
-  const sent=(await readPrefix(env,'threads:q:')).filter(x=>x.status==='published' && x.postId);
+  const sent=(await readPrefix(env,'threads:q:')).filter(x=>x.status==='published' && x.postId).sort((a,b)=>String(a.publishedAt).localeCompare(String(b.publishedAt)));
   for(const post of sent.slice(-50)) {
     try {
       const data=await graphGet('/'+encodeURIComponent(post.postId)+'/insights?metric=views,likes,replies,reposts,quotes,shares',token);
