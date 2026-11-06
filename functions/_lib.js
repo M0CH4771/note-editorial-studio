@@ -237,7 +237,7 @@ JSONだけ: {"ideas":[{"evidenceUrl":"検索結果内のURL","reason":"根拠・
 export async function createScheduledDraft(idea, env, dateKey) {
   const query = `${idea.title} 最新 公式 情報`;
   const results = await searchWeb(query, env);
-  const text = await generate(`${draftBrief}\nnoteに公開する前の100円記事の下書きを作ってください。
+  const text = await generate(`${draftBrief}\nnoteに公開する前の${idea.price || 100}円記事の下書きを作ってください。
 企画: ${JSON.stringify(idea)}
 日付: ${dateKey}
 検索結果: ${JSON.stringify(results)}
@@ -251,7 +251,7 @@ JSONだけ: {"title":"タイトル","dek":"説明文","category":"カテゴリ",
   return {
     id: idea.id, ideaId: idea.id, title: draft.title || idea.title, dek: draft.dek || '',
     contentMode: idea.contentMode || 'hybrid',
-    category: draft.category || idea.cluster || '', price: 100,
+    category: draft.category || idea.cluster || '', price: Number(idea.price || 100),
     freePart: draft.free_part || '', paidPart: draft.paid_part || '',
     sources, factCheck: draft.fact_check || [], socialPosts: draft.social_posts || [], nightReview: draft.night_review || [],
     editorNotes: draft.editor_notes || [], createdAt: new Date().toISOString(),
