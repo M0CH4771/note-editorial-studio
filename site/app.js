@@ -41,6 +41,7 @@ async function checkStatus() {
     const s = await api('/api/status');
     if (!s.ready) throw new Error('CloudflareのAPIキー設定を確認してください。');
     await syncDrafts();
+    await refreshThreadsStatus();
     connection.classList.toggle('ok', s.ready);
     connection.lastElementChild?.remove();
     connection.innerHTML = `<i></i>${s.ready ? '接続済み' : '設定を確認してください'}`;
@@ -49,6 +50,23 @@ async function checkStatus() {
     connection.classList.remove('ok');
     connection.innerHTML = `<i></i>${error.message.includes('パスワード') ? '接続パスワードを入力' : '接続できません'}`;
     if (!document.querySelector('#settingsDialog').open) document.querySelector('#settingsDialog').showModal();
+  }
+}
+
+
+async function refreshThreadsStatus() {
+  try {
+    const data = await api('/api/threads/status');
+    const label = $('#threadsState');
+    label.textContent = data.connected ? '接続済み' : '未接続';
+    label.classList.toggle('ok', !!data.connected);
+    $('#threadsAccount').textContent = data.connected ? (data.username ? '@' + data.username : 'Threadsアカウント接続済み') : 'Metaの公式連携を使います。';
+    $('#connectThreadsBtn').textContent = data.connected ? 'Threadsを再接続' : 'Threadsを接続';
+    const t = data.totals || {};
+    $('#threadsMetrics').innerHTML = '<div>投稿 <b>' + Number(data.sent || 0) + '</b></div><div>表示 <b>' + Number(t.views || 0).toLocaleString('ja-JP') + '</b></div><div>反応 <b>' + (Number(t.likes || 0) + Number(t.replies || 0) + Number(t.reposts || 0) + Number(t.quotes || 0)).toLocaleString('ja-JP') + '</b></div><div>待機 <b>' + Number(data.queued || 0) + '</b></div>';
+  } catch (e) {
+    $('#threadsState').textContent = '未接続';
+    $('#threadsMetrics').innerHTML = '<div>Threads投稿連携の状態を読み込めません。</div>';
   }
 }
 
@@ -262,6 +280,9 @@ async function copyText(text) {
 function escapeHtml(value = '') { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function escapeAttr(value = '') { return escapeHtml(value); }
 
+$('#connectThreadsBtn').addEventListener('click', async () => { try { const data = await api('/api/threads/connect'); location.href = data.url; } catch(e) { notify(e.message); } });
+if (new URLSearchParams(location.search).get('threads') === 'connected') { history.replaceState({}, '', location.pathname); notify('Threadsを接続しました。公開済み記事の告知案は毎日1本ずつ投稿されます。'); }
+if (new URLSearchParams(location.search).get('threads') === 'error') { history.replaceState({}, '', location.pathname); notify('Threads連携に失敗しました。Metaアプリ設定を確認してください。'); }
 $('#refreshDraftsBtn').addEventListener('click', async () => {
   const button = $('#refreshDraftsBtn');
   button.disabled = true; button.textContent = '更新中…';
