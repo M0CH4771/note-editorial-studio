@@ -66,9 +66,8 @@ export class DailyDraftWorkflow extends WorkflowEntrypoint {
 }
 
 export default {
-  async scheduled(controller, env, ctx) {
-    const dateKey = new Date(controller.scheduledTime + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    ctx.waitUntil(env.DAILY_DRAFTS.create({ id: `daily-${dateKey}`, params: { dateKey } }));
+  async scheduled(_controller, env, ctx) {
+    // Keep the daily timer for Threads queue delivery; automatic daily article drafting is disabled.
     ctx.waitUntil(threadsDailyTick(env));
   },
   async fetch(request, env) {
