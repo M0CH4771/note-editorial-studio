@@ -438,13 +438,13 @@ loadDrafts();
 checkStatus();
 
 function renderLead(){
-  const latest=state.drafts.filter(d=>d.automated).map(d=>d.date).sort().at(-1);
-  const picks=state.drafts.filter(d=>d.automated&&d.date===latest).sort((a,b)=>(a.rank||99)-(b.rank||99));
-  const d=picks.find(x=>x.status==='published')||picks[0];
+  const picks=state.drafts.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  const d=picks[0];
   const box=$('#lead');
-  if(!d){box.textContent='自動作成した下書きが届くと、ここにおすすめの1本が出ます。';return;}
+  if(!d){box.textContent='企画を探して下書きを作ると、ここに最新の記事が表示されます。';return;}
+  const dateLabel=d.createdAt?new Date(d.createdAt).toLocaleDateString('ja-JP'):'';
   const link=d.evidence&&/^https?:\/\//i.test(d.evidence)?'<a target="_blank" rel="noreferrer" href="'+escapeAttr(d.evidence)+'">根拠を読む</a>':'根拠ページは要確認';
-  box.innerHTML='<small>'+escapeHtml(latest)+' 作成 · '+(d.status==='published'?'公開済み':'おすすめ')+'</small><h3>'+escapeHtml(d.title)+'</h3><p>'+escapeHtml(d.reason||d.dek)+'</p>'+link+' <button>下書きを開く</button>';
+  box.innerHTML='<small>'+escapeHtml(dateLabel)+' 作成 · '+(d.status==='published'?'公開済み':'下書き')+'</small><h3>'+escapeHtml(d.title)+'</h3><p>'+escapeHtml(d.reason||d.dek)+'</p>'+link+' <button>下書きを開く</button>';
   box.querySelector('button').onclick=()=>{state.selected=d.id;renderDrafts();$('#editor').scrollIntoView();};
 }
 async function refreshFailures(){
